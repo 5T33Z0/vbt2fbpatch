@@ -5,7 +5,6 @@ Generate OpenCore framebuffer patches for Intel iGPUs from your machine's own fi
 `vbt2fbpatch` reads the display connector table from a dumped Intel Video BIOS Table (VBT), checks your iGPU against the [WhateverGreen Intel HD manual](https://github.com/acidanthera/WhateverGreen/blob/master/Manual/FAQ.IntelHD.en.md), and prints a ready-to-use `DeviceProperties` snippet for your `config.plist`.
 
 > [!NOTE]
-> 
 > Treat this as a proof of concept. The original web app, built in Google AI Studio, has a GUI with more manual settings, but I haven't managed to turn it into a native macOS app yet.
 >
 > The command-line tool is tested against the example values in the WhateverGreen manual and synthetic VBT files, not yet on a wide range of real boards. Treat the output as a well-informed starting point, not a guaranteed working patch.
@@ -125,6 +124,8 @@ python3 vbt2fbpatch.py -i vbt.bin -d 3E9B -t 14.0 -m /path/to/config.plist
 | `--mobile` | Laptop mode: mobile framebuffer, at most 3 connectors (`con0` to `con2`) and `framebuffer-portcount` = 3 |
 | `--first-con N` | Index of the first `framebuffer-conN` patch. Default: 0 with an internal panel, otherwise 1, like the FAQ framebuffers |
 | `--bus-id-source ddi\|ddc` | Bus-ID of HDMI/DVI ports: from the DDI (default) or from the VBT's `ddc_pin` (experimental, only valid for legacy GMBUS pins 4, 5 and 6) |
+| `--pipe N` | Override the pipe of every connector patch, for example `18` (some community laptop patches use it) |
+| `--lspcon-mode pcon\|ls` | Also set `framebuffer-conN-preferred-lspcon-mode` on ports the VBT marks as LSPCON |
 | `--verbose` | Show parser notes |
 | `--backlight-fix` | Add the backlight register fix for Kaby Lake, Coffee Lake and Ice Lake laptops. Uses `enable-backlight-registers-alternative-fix` on macOS 13.4 and newer, otherwise `enable-backlight-registers-fix` |
 | `-m`, `--merge` | Merge the patch into this `config.plist` |
@@ -151,6 +152,8 @@ Exit codes: `0` success, `1` file or parse error, `2` missing or invalid input, 
 - **Skylake on macOS 13 and newer** needs a Kaby Lake spoof. The pairing the tool uses is the closest match, and the manual recommends experimenting if it does not fit.
 - **DisplayPort++ ports** are patched as HDMI. DDI E and F connectors are skipped and reported.
 - **Backlight fixes are opt-in.** The VBT does not say whether a laptop needs them, so the tool only adds the property if you pass `--backlight-fix`. The manual documents it for Kaby Lake, Coffee Lake and Ice Lake graphics only.
+- **LSPCON ports are detected from the VBT** (BDB 192 and newer). For those ports the tool adds `framebuffer-conN-has-lspcon` and `enable-lspcon-support`. The FAQ says the driver is only needed when HDMI 2.0 is routed to the iGPU.
+- **Comet Lake U laptops (9B41, 9BCA, 9BCC)** are not in the FAQ. The spoof to 0x3E9B and the `3E9B0000` framebuffer come from a working community patch.
 - **Bus IDs are the weak spot.** For HDMI and DVI ports the Apple bus-ID corresponds to the DDC (GMBUS) pin on older platforms. The tool derives it from the DDI by default and warns when the VBT's `ddc_pin` disagrees. Newer VBTs store the pin in a different encoding, which the tool cannot translate, so those values are shown but not used.
 - **Back up first.** Keep a working EFI around before testing a new patch.
 

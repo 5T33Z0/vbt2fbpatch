@@ -2,6 +2,14 @@
 
 All notable changes to vbt2fbpatch are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.2.0] - 2026-11-01
+
+### Added
+- Comet Lake U (mobile, UHD 630) device-ids 9B41, 9BCA and 9BCC (i915's "CML U GT2" list). They are spoofed to 0x3E9B with platform-id `3E9B0000`, taken from a working community patch. The FAQ does not document these, and the tool labels them as community-reported.
+- LSPCON detection from the VBT (BDB 192 and newer). Ports with the flag get `framebuffer-conN-has-lspcon`, and `enable-lspcon-support` is added. A note explains that the FAQ only requires the driver when HDMI 2.0 is routed to the iGPU. The port table shows an `LSPCON` marker.
+- `--lspcon-mode pcon|ls` to also set `framebuffer-conN-preferred-lspcon-mode`.
+- `--pipe N` to override the pipe of every connector patch. Working community patches for laptops use pipe 18 (`0x12`) where the FAQ framebuffers use 8, 9 and 10.
+
 ## [3.1.0] - 2026-11-01
 
 ### Added

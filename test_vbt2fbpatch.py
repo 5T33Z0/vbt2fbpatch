@@ -6,6 +6,7 @@ The expected byte strings are the ones printed in WhateverGreen's FAQ.IntelHD.en
 The synthetic VBT follows the struct layout from Linux i915 (intel_vbt_defs.h).
 """
 
+import base64
 import contextlib
 import io
 import json
@@ -98,7 +99,7 @@ class SpoofData(unittest.TestCase):
             self.assertIsNone(v.INTEL_IGPU_DATABASE[dev_id].spoof)
 
     def test_entries_not_in_the_faq_are_absent(self):
-        for dev_id in (0x9B41, 0x9BA4, 0x9BA5, 0x9BC6, 0x9BA8, 0x041A, 0x0402):
+        for dev_id in (0x9BA4, 0x9BA5, 0x9BC6, 0x9BA8, 0x041A, 0x0402):
             self.assertNotIn(dev_id, v.INTEL_IGPU_DATABASE)
 
 
@@ -392,6 +393,61 @@ class Spec(unittest.TestCase):
             self.assertEqual(len(data["ports"]), 4)
             with contextlib.redirect_stderr(io.StringIO()):
                 self.assertEqual(v.main(["-i", path, "-d", "3EA0", "--mobile", "-f", "desktop"]), 2)
+
+
+class CommunityAndLspcon(unittest.TestCase):
+    def test_comet_lake_u_matches_the_working_patch(self):
+        # bytes from a working community patch: device-id mz4AAA== and AAPL,ig-platform-id AACbPg==
+        for dev in ("9B41", "9BCA", "9BCC"):
+            r = v.resolve_igpu(dev, "14.0")
+            self.assertEqual(r.status, S.NEEDS_SPOOF)
+            self.assertEqual(r.spoof_bytes, base64.b64decode("mz4AAA=="))
+            self.assertEqual(r.platform_id_bytes, base64.b64decode("AACbPg=="))
+            self.assertEqual(v.INTEL_IGPU_DATABASE[int(dev, 16)].faq_section, v.SEC_COMMUNITY)
+
+    def test_lspcon_comes_from_the_vbt(self):
+        kids = [EDP, child(0x60D2, 1, flags=0x04), child(0x60D2, 2)]          # HDMI on B has the LSPCON flag
+        p = v.VBTParser(build_vbt(kids, bdb_version=230))
+        self.assertEqual([d.lspcon for d in p.child_devices], [False, True, False])
+        patches, _ = v.build_connector_patches(p.child_devices)
+        props = v.generate_opencore_patch(v.serialize_platform_id("3E9B0000"), None, None, patches)
+        self.assertEqual(props["framebuffer-con1-has-lspcon"].hex(), "01000000")
+        self.assertNotIn("framebuffer-con2-has-lspcon", props)
+        self.assertEqual(props["enable-lspcon-support"].hex(), "01000000")
+        self.assertNotIn("framebuffer-con1-preferred-lspcon-mode", props)
+        props = v.generate_opencore_patch(v.serialize_platform_id("3E9B0000"), None, None, patches, lspcon_mode=1)
+        self.assertEqual(props["framebuffer-con1-preferred-lspcon-mode"].hex(), "01000000")
+
+    def test_lspcon_flag_needs_bdb_192(self):
+        p = v.VBTParser(build_vbt([child(0x60D2, 1, flags=0x04)], child_size=33, bdb_version=155))
+        self.assertIsNone(p.child_devices[0].lspcon)
+        patches, _ = v.build_connector_patches(p.child_devices)
+        props = v.generate_opencore_patch(v.serialize_platform_id("3E9B0007"), None, None, patches)
+        self.assertNotIn("enable-lspcon-support", props)
+
+    def test_pipe_override(self):
+        p = v.VBTParser(build_vbt([EDP, DP_B, HDMI_D]))
+        patches, _ = v.build_connector_patches(p.child_devices, pipe_override=18)
+        self.assertEqual({c.pipe for c in patches}, {18})
+        props = v.generate_opencore_patch(v.serialize_platform_id("3E9B0000"), None, None, patches)
+        self.assertEqual(props["framebuffer-con1-pipe"].hex(), "12000000")
+
+    def test_cli_options(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "vbt.bin")
+            with open(path, "wb") as f:
+                f.write(build_vbt([EDP, child(0x60D2, 1, flags=0x04), child(0x60D2, 2)], bdb_version=230))
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                code = v.main(["-i", path, "-d", "9BCA", "--pipe", "18", "--lspcon-mode", "pcon", "--json"])
+            data = json.loads(out.getvalue())
+            self.assertEqual(code, 0)
+            props = data["properties"]
+            self.assertEqual(props["device-id"]["hex"], "9B3E0000")
+            self.assertEqual(props["AAPL,ig-platform-id"]["hex"], "00009B3E")
+            self.assertEqual(props["framebuffer-con1-pipe"]["hex"], "12000000")
+            self.assertEqual(props["framebuffer-con1-preferred-lspcon-mode"]["hex"], "01000000")
+            self.assertTrue(any("LSPCON" in w for w in data["warnings"]))
 
 
 class CLI(unittest.TestCase):

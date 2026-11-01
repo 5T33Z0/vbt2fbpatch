@@ -66,7 +66,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Tuple, Union
 
-__version__ = "3.1.0"
+__version__ = "3.2.0"
 PROG_NAME = "vbt2fbpatch"
 FAQ_URL = "https://github.com/acidanthera/WhateverGreen/blob/master/Manual/FAQ.IntelHD.en.md"
 IGPU_PCI_PATH = "PciRoot(0x0)/Pci(0x2,0x0)"
@@ -195,6 +195,7 @@ SEC_SKL = "Intel HD Graphics 510-580 (Skylake processors)"
 SEC_KBL = "Intel (U)HD Graphics 610-650 (Kaby Lake and Amber Lake Y processors)"
 SEC_CFL = "Intel UHD Graphics 610-655 (Coffee Lake and Comet Lake processors)"
 SEC_ICL = "Intel Iris Plus Graphics (Ice Lake processors)"
+SEC_COMMUNITY = "community-reported working patch, not documented in the FAQ"
 
 DESKTOP, MOBILE, HEADLESS = FormFactor.DESKTOP, FormFactor.MOBILE, FormFactor.HEADLESS
 
@@ -274,6 +275,11 @@ SPOOF_COFFEE_LAKE_REFRESH = SpoofMapping(
 SPOOF_WHISKEY_LAKE = SpoofMapping(
     0x3EA5, SEC_CFL,
     "Whiskey Lake UHD620 needs device-id A53E0000 (0x3EA5).")
+
+SPOOF_COMET_LAKE_MOBILE = SpoofMapping(
+    0x3E9B, SEC_COMMUNITY,
+    "Comet Lake U (mobile) is not in the FAQ's native list; a working community patch spoofs it "
+    "to 0x3E9B (device-id 9B3E0000).")
 
 SPOOF_KABY_LAKE_REFRESH = SpoofMapping(
     0x5916, SEC_KBL,
@@ -440,6 +446,18 @@ _register(IGPUDevice(0x9BC5, "Intel UHD Graphics 630 (Comet Lake)", "Comet Lake"
 _register(IGPUDevice(0x9BC4, "Intel UHD Graphics 630 (Comet Lake)", "Comet Lake", DESKTOP,
                      macos_min="10.15.4", profiles=_cfl_profiles("9BC40003"), faq_section=SEC_CFL,
                      notes="Native since macOS 10.15.4 (FAQ recommends 10.15.5)."))
+
+# Comet Lake U GT2 (mobile): ids from i915's CML U GT2 list. The spoof and framebuffer come from a
+# working community patch; the FAQ does not document them.
+for _did in (0x9B41, 0x9BCA, 0x9BCC):
+    _register(IGPUDevice(
+        _did, "Intel UHD Graphics 630 (Comet Lake U mobile)", "Comet Lake", MOBILE, macos_min="10.14",
+        spoof=SPOOF_COMET_LAKE_MOBILE,
+        profiles=[_p("3E9B0000", MOBILE, "framebuffer of a working community patch"),
+                  _p("3EA50009", MOBILE, "FAQ default laptop framebuffer"),
+                  _p("3E9B0007", DESKTOP, "FAQ recommended desktop framebuffer")],
+        faq_section=SEC_COMMUNITY,
+        notes="Spoof target and framebuffer come from a working community patch, not from the FAQ."))
 
 # Ice Lake: since macOS 10.15.4
 _register(IGPUDevice(0x8A52, "Intel Iris Plus Graphics G7 (Ice Lake)", "Ice Lake", MOBILE,
@@ -639,6 +657,7 @@ BDB_VER_AUX_CHANNEL = 158
 BDB_VER_TYPEC = 195
 BDB_VER_HPD_INVERT = 196
 BDB_VER_TBT = 209
+BDB_VER_LSPCON = 192
 
 # device_type bits (intel_vbt_defs.h)
 DT_ANALOG_OUTPUT = 1 << 0
@@ -788,6 +807,13 @@ class ChildDevice:
         if self.bdb_version < BDB_VER_TBT or len(self.raw) <= CHILD_OFF_TYPEC:
             return None
         return bool(self.raw[CHILD_OFF_TYPEC] & 0x02)
+
+    @property
+    def lspcon(self) -> Optional[bool]:
+        """Port has an onboard LSPCON (DP to HDMI 2.0 converter); flag exists from BDB 192."""
+        if self.bdb_version < BDB_VER_LSPCON or len(self.raw) <= CHILD_OFF_FLAGS:
+            return None
+        return bool(self.raw[CHILD_OFF_FLAGS] & 0x04)
 
 
 def extract_pcir_device_id(data: bytes) -> Optional[int]:
@@ -953,6 +979,10 @@ class ConnectorPatch:
     def type_bytes(self) -> bytes:
         return pack_u32_le(self.con_type)
 
+    @property
+    def lspcon(self) -> bool:
+        return bool(self.source.lspcon)
+
 
 def _external_bus_id(dev: ChildDevice, bus_source: str, warnings: List[str]) -> Optional[int]:
     """Apple bus-id for an external connector: from its DDI (default) or from the VBT ddc_pin."""
@@ -976,6 +1006,7 @@ def build_connector_patches(
     first_index: Optional[int] = None,
     max_connectors: int = MAX_CONNECTORS,
     bus_source: str = "ddi",
+    pipe_override: Optional[int] = None,
 ) -> Tuple[List[ConnectorPatch], List[str]]:
     """
     Turn VBT connectors into framebuffer-conN-* patches.
@@ -1035,6 +1066,8 @@ def build_connector_patches(
         else:
             pipe = pipes[ext_count % len(pipes)]
             ext_count += 1
+        if pipe_override is not None:
+            pipe = pipe_override
         patches.append(ConnectorPatch(first_index + offset, bus_id, CONNECTOR_TYPE_BY_KIND[d.kind], pipe, d))
     return patches, warnings
 
@@ -1084,6 +1117,7 @@ def generate_opencore_patch(
     unifiedmem: bool = False,
     rps_control: bool = False,
     portcount: Optional[int] = None,
+    lspcon_mode: Optional[int] = None,
 ) -> Dict[str, bytes]:
     """Ordered DeviceProperties for PciRoot(0x0)/Pci(0x2,0x0). All integers go through pack_u32_le."""
     props: Dict[str, bytes] = {"AAPL,ig-platform-id": platform_id_bytes}
@@ -1099,6 +1133,12 @@ def generate_opencore_patch(
         props[f"framebuffer-con{c.index}-busid"] = pack_u32_le(c.bus_id)
         props[f"framebuffer-con{c.index}-type"] = pack_u32_le(c.con_type)
         props[f"framebuffer-con{c.index}-pipe"] = pack_u32_le(c.pipe)
+        if c.lspcon:
+            props[f"framebuffer-con{c.index}-has-lspcon"] = pack_u32_le(1)
+            if lspcon_mode is not None:
+                props[f"framebuffer-con{c.index}-preferred-lspcon-mode"] = pack_u32_le(lspcon_mode)
+    if any(c.lspcon for c in connectors or []):
+        props["enable-lspcon-support"] = pack_u32_le(1)
     if unifiedmem:
         props["framebuffer-unifiedmem"] = pack_u32_le(0x80000000)
     if rps_control:
@@ -1194,6 +1234,8 @@ def render_port_summary(vbt: VBTParser) -> str:
             notes.append("USB-C")
         if d.tbt:
             notes.append("TBT")
+        if d.lspcon:
+            notes.append("LSPCON")
         if d.kind in ("Analog", "MIPI", "Unknown"):
             notes.append(f"ignored ({d.kind})")
         rows.append([
@@ -1255,6 +1297,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--bus-id-source", choices=("ddi", "ddc"), default="ddi",
                    help="bus-id of HDMI/DVI ports: from the DDI (default) or from the VBT ddc_pin "
                         "(experimental; only valid for legacy GMBUS pins 4, 5, 6)")
+    p.add_argument("--pipe", type=int, metavar="N",
+                   help="override the pipe of every connector patch (e.g. 18; some community laptop patches use it)")
+    p.add_argument("--lspcon-mode", choices=("pcon", "ls"),
+                   help="also set framebuffer-conN-preferred-lspcon-mode on ports the VBT marks as LSPCON "
+                        "(pcon = DP to HDMI 2.0, ls = HDMI 1.4)")
     p.add_argument("--verbose", action="store_true", help="show parser notes")
     p.add_argument("-m", "--merge", help="merge the patch into this config.plist (a .bak copy is written first)")
     p.add_argument("-o", "--output", help="write the XML snippet to this file")
@@ -1316,14 +1363,17 @@ def main(argv: Optional[List[str]] = None) -> int:
         connectors, conn_warnings = build_connector_patches(
             vbt.child_devices, first_index=args.first_con,
             max_connectors=MOBILE_MAX_CONNECTORS if args.mobile else MAX_CONNECTORS,
-            bus_source=args.bus_id_source)
+            bus_source=args.bus_id_source, pipe_override=args.pipe)
     extras = dict(res.extra_properties)
     backlight_warnings: List[str] = []
     if args.backlight_fix:
         backlight_prop, backlight_warnings = select_backlight_property(res)
         if backlight_prop:
             extras[backlight_prop] = pack_u32_le(1)
-    all_warnings = vbt.warnings + res.warnings + conn_warnings + backlight_warnings
+    lspcon_notes = [f"VBT marks slot {c.source.slot} ({c.source.kind}, DDI {c.source.ddi}) as LSPCON: adding "
+                    f"framebuffer-con{c.index}-has-lspcon and enable-lspcon-support. The FAQ says the driver is only "
+                    f"needed when HDMI 2.0 is routed to the iGPU." for c in connectors if c.lspcon]
+    all_warnings = vbt.warnings + res.warnings + conn_warnings + backlight_warnings + lspcon_notes
 
     props: Optional[Dict[str, bytes]] = None
     exit_code = 0
@@ -1336,7 +1386,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     else:
         props = generate_opencore_patch(res.platform_id_bytes, res.spoof_bytes, extras,
                                         connectors, args.unifiedmem, args.rps_control,
-                                        portcount=MOBILE_MAX_CONNECTORS if args.mobile else None)
+                                        portcount=MOBILE_MAX_CONNECTORS if args.mobile else None,
+                                        lspcon_mode={"pcon": 1, "ls": 0}.get(args.lspcon_mode))
 
     if args.json:
         out = {
