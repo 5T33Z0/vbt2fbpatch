@@ -21,10 +21,12 @@ from vbt2fbpatch import CompatibilityStatus as S, FormFactor as FF
 
 # ---------------------------------------------------------------- VBT builder
 
-def child(device_type, dvo_port, aux=0, ddc=0, size=40):
+def child(device_type, dvo_port, aux=0, ddc=0, size=40, handle=0, flags=0, caps=0, typec=0):
     c = bytearray(size)
-    struct.pack_into("<H", c, 2, device_type)
-    c[16], c[19], c[25] = dvo_port, ddc, aux
+    struct.pack_into("<HH", c, 0, handle, device_type)
+    c[16], c[19], c[23], c[25], c[27] = dvo_port, ddc, flags, aux, caps
+    if size > 33:
+        c[33] = typec
     return bytes(c)
 
 
@@ -40,8 +42,10 @@ def build_vbt(children, child_size=40, bdb_version=230, lfp_block=True, with_gen
     bdb = (b"BIOS_DATA_BLOCK".ljust(16, b"\0")
            + struct.pack("<HHH", bdb_version, 22, 22 + len(blocks)) + blocks)
     header = (b"$VBT SKYLAKE".ljust(20, b"\0")
-              + struct.pack("<HHHBBI", 155, 48, 48 + len(bdb), 0, 0, 48) + b"\0" * 16)
-    return header + bdb
+              + struct.pack("<HHHBBI", 100, 48, 48 + len(bdb), 0, 0, 48) + b"\0" * 16)
+    blob = bytearray(header + bdb)
+    blob[26] = (-sum(blob)) & 0xFF          # checksum byte: all vbt_size bytes add up to 0 mod 256
+    return bytes(blob)
 
 
 EDP = child(0x78C6, 10, aux=0x10)       # DDI A eDP
@@ -292,6 +296,102 @@ class Backlight(unittest.TestCase):
             self.assertEqual(data["properties"][self.ALT]["hex"], "01000000")
             self.assertNotIn(self.BLR, data["properties"])
             self.assertTrue(any("-igfxblr" in w for w in data["warnings"]))
+
+
+class Spec(unittest.TestCase):
+    """Behaviour requested for the VBT parser and the connector limits."""
+
+    def test_checksum(self):
+        good = build_vbt([EDP])
+        self.assertTrue(v.VBTParser(good).checksum_ok)
+        bad = bytearray(good)
+        bad[-1] ^= 0xFF
+        p = v.VBTParser(bytes(bad))
+        self.assertFalse(p.checksum_ok)
+        self.assertTrue(any("checksum" in w for w in p.warnings))
+
+    def test_handles_depend_on_bdb_version(self):
+        self.assertEqual(v.handle_name(0x0008, 155), "LFP1")
+        self.assertEqual(v.handle_name(0x0080, 155), "LFP2")
+        self.assertEqual(v.handle_name(0x0004, 155), "EFP1")
+        self.assertEqual(v.handle_name(0x0002, 155), "TV")
+        self.assertEqual(v.handle_name(0x0002, 215), "EFP5")
+        self.assertEqual(v.handle_name(0x0001, 155), "CRT")
+        self.assertEqual(v.handle_name(0x0001, 217), "EFP6")
+
+    def test_fields_are_gated_by_bdb_version(self):
+        kids = [child(0x78C6, 10, aux=0x40, handle=0x0008, flags=0x10, typec=0x03)]
+        new = v.VBTParser(build_vbt(kids, bdb_version=230)).child_devices[0]
+        self.assertEqual((new.handle_label, new.aux_ddi, new.hpd_invert, new.usb_type_c, new.tbt),
+                         ("LFP1", "A", True, True, True))
+        old = v.VBTParser(build_vbt(kids, child_size=33, bdb_version=155)).child_devices[0]
+        self.assertFalse(old.aux_valid)
+        self.assertIsNone(old.aux_ddi)          # before BDB 158 these bytes hold dvo2 data
+        self.assertIsNone(old.hpd_invert)       # 196+
+        self.assertIsNone(old.usb_type_c)       # 195+
+        mid = v.VBTParser(build_vbt(kids, bdb_version=200)).child_devices[0]
+        self.assertTrue(mid.usb_type_c)
+        self.assertIsNone(mid.tbt)              # 209+
+
+    def test_expected_child_sizes_follow_i915(self):
+        sizes = {110: 27, 111: 33, 194: 33, 195: 37, 196: 38, 215: 38, 216: 39, 255: 39, 256: 40, 263: 44}
+        for version, size in sizes.items():
+            self.assertEqual(v.expected_child_size(version), size, version)
+        self.assertIsNone(v.expected_child_size(265))
+
+    def test_four_connector_limit_keeps_the_internal_panel(self):
+        p = v.VBTParser(build_vbt([HDMI_D, DP_C, DP_B, EDP]))
+        patches, warnings = v.build_connector_patches(p.child_devices, first_index=1)   # con1..con3
+        self.assertEqual([c.source.kind for c in patches], ["eDP", "DP", "DP"])
+        self.assertTrue(any("not patched" in w and "HDMI" in w for w in warnings))
+        self.assertEqual([c.index for c in patches], [1, 2, 3])
+
+    def test_mobile_limit_is_three_connectors(self):
+        p = v.VBTParser(build_vbt([EDP, DP_B, DP_C, HDMI_D]))
+        patches, warnings = v.build_connector_patches(p.child_devices, max_connectors=v.MOBILE_MAX_CONNECTORS)
+        self.assertEqual([c.index for c in patches], [0, 1, 2])
+        self.assertTrue(any("at most 3" in w for w in warnings))
+
+    def test_analog_devices_are_excluded(self):
+        p = v.VBTParser(build_vbt([EDP, CRT]))
+        patches, warnings = v.build_connector_patches(p.child_devices)
+        self.assertEqual(len(patches), 1)
+        self.assertTrue(any("Analog" in w for w in warnings))
+
+    def test_bus_id_source(self):
+        hdmi_b_ddc6 = child(0x60D2, 1, ddc=6)       # HDMI on DDI B whose VBT ddc_pin says GMBUS pin 6
+        p = v.VBTParser(build_vbt([EDP, hdmi_b_ddc6]))
+        by_ddi, warn = v.build_connector_patches(p.child_devices)
+        self.assertEqual(by_ddi[1].bus_id, 5)
+        self.assertTrue(any("--bus-id-source ddc" in w for w in warn))
+        by_ddc, _ = v.build_connector_patches(p.child_devices, bus_source="ddc")
+        self.assertEqual(by_ddc[1].bus_id, 6)
+        enum_style = v.VBTParser(build_vbt([EDP, child(0x60D2, 1, ddc=1)]))     # newer VBTs: enum, not a GMBUS pin
+        patches, warn = v.build_connector_patches(enum_style.child_devices, bus_source="ddc")
+        self.assertEqual(patches[1].bus_id, 5)
+        self.assertTrue(any("not a legacy GMBUS pin" in w for w in warn))
+
+    def test_portcount_property(self):
+        props = v.generate_opencore_patch(v.serialize_platform_id("3EA50009"), portcount=3)
+        self.assertEqual(props["framebuffer-portcount"].hex(), "03000000")
+        self.assertIn("framebuffer-patch-enable", props)
+
+    def test_cli_mobile_flag(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "vbt.bin")
+            with open(path, "wb") as f:
+                f.write(build_vbt([EDP, DP_B, DP_C, HDMI_D]))
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                code = v.main(["-i", path, "-d", "3EA0", "--mobile", "--json"])
+            data = json.loads(out.getvalue())
+            self.assertEqual(code, 0)
+            self.assertEqual(data["properties"]["framebuffer-portcount"]["hex"], "03000000")
+            self.assertEqual([c["property"] for c in data["connectors"]], ["con0", "con1", "con2"])
+            self.assertTrue(data["checksum"]["ok"])
+            self.assertEqual(len(data["ports"]), 4)
+            with contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(v.main(["-i", path, "-d", "3EA0", "--mobile", "-f", "desktop"]), 2)
 
 
 class CLI(unittest.TestCase):

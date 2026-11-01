@@ -26,7 +26,32 @@ Byte order
   The FAQ prints device-ids and connector types as the final byte string (3A1E0000,
   00040000) and framebuffer IDs in integer notation (0x0166000B).
 
+Attribution
+  The VBT/BDB structure definitions, device-type bits and DVO/DDI/AUX mappings follow the
+  Linux i915 driver (drivers/gpu/drm/i915/display/intel_vbt_defs.h and intel_bios.c,
+  Copyright (c) Intel Corporation, MIT license). The same format is decoded by
+  igt-gpu-tools' tools/intel_vbt_decode.c (Copyright (c) Intel Corporation, MIT license),
+  a good reference decoder to compare against. No code was copied from either project.
+
 License: MIT
+
+Copyright (c) 2026 vbt2fbpatch contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this
+software and associated documentation files (the "Software"), to deal in the Software
+without restriction, including without limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or
+substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
 """
 
 import argparse
@@ -41,7 +66,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Tuple, Union
 
-__version__ = "3.0.0"
+__version__ = "3.1.0"
 PROG_NAME = "vbt2fbpatch"
 FAQ_URL = "https://github.com/acidanthera/WhateverGreen/blob/master/Manual/FAQ.IntelHD.en.md"
 IGPU_PCI_PATH = "PciRoot(0x0)/Pci(0x2,0x0)"
@@ -579,13 +604,15 @@ def resolve_igpu(
 
 # ==============================================================================
 # VBT / BDB parsing
-# Layout verified against Linux i915: intel_vbt_defs.h and intel_bios.c
-#   vbt_header : "$VBT ..."[20] u16 version, u16 header_size, u16 vbt_size,
-#                u8 checksum, u8 reserved, u32 bdb_offset, u32 aim_offset[4]
+# Layout verified against Linux i915 (intel_vbt_defs.h, intel_bios.c) and checked
+# on real VBT files (Skylake BDB 209, Tiger Lake BDB 240).
+#   vbt_header : "$VBT ..."[20] u16 version (not the BDB version!), u16 header_size,
+#                u16 vbt_size, u8 checksum, u8 reserved, u32 bdb_offset, u32 aim_offset[4]
 #   bdb_header : "BIOS_DATA_BLOCK"[16] u16 version, u16 header_size, u16 bdb_size
 #   blocks     : u8 id, u16 size, data[size]
 #   block 2    : General Definitions = crt_ddc_gmbus_pin, dpms bits,
 #                boot_display[2], child_dev_size, then child_device_config[]
+# The BDB version (not the VBT header version) decides which child fields are valid.
 # ==============================================================================
 
 VBT_SIGNATURE = b"$VBT"
@@ -597,12 +624,21 @@ BDB_MIPI_SEQUENCE = 53                    # v3+ blocks carry a 32-bit size
 GENERAL_DEFINITIONS_HEADER_SIZE = 5
 LEGACY_CHILD_DEVICE_CONFIG_SIZE = 33      # smallest child_device_config i915 accepts
 
-# child_device_config field offsets (computed from the i915 struct)
+# child_device_config field offsets (computed from the i915 struct with gcc)
+CHILD_OFF_HANDLE = 0
 CHILD_OFF_DEVICE_TYPE = 2
 CHILD_OFF_DVO_PORT = 16
 CHILD_OFF_I2C_PIN = 17
 CHILD_OFF_DDC_PIN = 19
-CHILD_OFF_AUX_CHANNEL = 25
+CHILD_OFF_FLAGS = 23                      # bit 4 = hpd_invert (BDB 196+)
+CHILD_OFF_AUX_CHANNEL = 25                # valid from BDB 158; older VBTs hold dvo2 data here
+CHILD_OFF_CAPS = 27                       # bits 3-4 = hpd_status
+CHILD_OFF_TYPEC = 33                      # bit 0 = dp_usb_type_c (195+), bit 1 = tbt (209+)
+
+BDB_VER_AUX_CHANNEL = 158
+BDB_VER_TYPEC = 195
+BDB_VER_HPD_INVERT = 196
+BDB_VER_TBT = 209
 
 # device_type bits (intel_vbt_defs.h)
 DT_ANALOG_OUTPUT = 1 << 0
@@ -613,6 +649,7 @@ DT_LVDS_SIGNALING = 1 << 5
 DT_MIPI_OUTPUT = 1 << 10
 DT_NOT_HDMI_OUTPUT = 1 << 11
 DT_INTERNAL_CONNECTOR = 1 << 12
+DT_HOTPLUG_SIGNALING = 1 << 13
 
 # DVO port value -> DDI letter (i915 dvo_port_to_port table; E also takes DVO_PORT_CRT)
 DVO_PORT_TO_DDI: Dict[int, str] = {
@@ -627,6 +664,14 @@ DVO_PORT_TO_DDI: Dict[int, str] = {
     20: "I", 19: "I",
 }
 
+# AUX channel byte -> DDI letter (DP_AUX_* in intel_vbt_defs.h)
+DP_AUX_TO_DDI = {0x40: "A", 0x10: "B", 0x20: "C", 0x30: "D", 0x50: "E",
+                 0x60: "F", 0x70: "G", 0x80: "H", 0x90: "I"}
+
+# Legacy GMBUS pins (intel_gmbus.h): DPC = 4, DPB = 5, DPD = 6. On older platforms the VBT
+# ddc_pin holds this number directly, and it equals the Apple bus-id used for DDI C/B/D.
+LEGACY_GMBUS_PINS = (4, 5, 6)
+
 # Apple bus IDs seen in the FAQ connector dumps: internal panel 0x00, DDI B/C/D = 5/4/6.
 INTERNAL_BUS_ID = 0x00
 EXTERNAL_BUS_ID_BY_DDI = {"B": 0x05, "C": 0x04, "D": 0x06}
@@ -634,6 +679,34 @@ EXTERNAL_BUS_ID_BY_DDI = {"B": 0x05, "C": 0x04, "D": 0x06}
 INTERNAL_PIPE = 8
 EXTERNAL_PIPES_WITH_PANEL = [9, 10]
 EXTERNAL_PIPES_NO_PANEL = [9, 10, 8]
+
+MAX_CONNECTORS = 4          # con0 .. con3
+MOBILE_MAX_CONNECTORS = 3   # con0 .. con2
+
+
+def expected_child_size(bdb_version: int) -> Optional[int]:
+    """child_device_config size i915 expects for a BDB version (None = unknown version)."""
+    if bdb_version > 264:
+        return None
+    for minimum, size in ((263, 44), (256, 40), (216, 39), (196, 38), (195, 37), (111, 33), (106, 27)):
+        if bdb_version >= minimum:
+            return size
+    return 22
+
+
+def handle_name(handle: int, bdb_version: int) -> str:
+    """Device handle -> LFP1/LFP2/EFP1... (some values were reused by newer BDB versions)."""
+    fixed = {0x0008: "LFP1", 0x0080: "LFP2", 0x0004: "EFP1", 0x0040: "EFP2",
+             0x0020: "EFP3", 0x0010: "EFP4"}
+    if handle in fixed:
+        return fixed[handle]
+    if handle == 0x0002:
+        return "EFP5" if bdb_version >= 215 else "TV"
+    if handle == 0x0001:
+        return "EFP6" if bdb_version >= 217 else "CRT"
+    if handle in (0x0100, 0x0200) and bdb_version >= 217:
+        return "EFP7" if handle == 0x0100 else "EFP8"
+    return f"0x{handle:04X}"
 
 
 def classify_device_type(device_type: int) -> str:
@@ -667,6 +740,8 @@ class ChildDevice:
     ddc_pin: int
     aux_channel: int
     raw: bytes
+    handle: int = 0
+    bdb_version: int = 0
 
     @property
     def kind(self) -> str:
@@ -679,6 +754,40 @@ class ChildDevice:
     @property
     def is_internal_panel(self) -> bool:
         return self.kind in ("eDP", "LVDS")
+
+    @property
+    def handle_label(self) -> str:
+        return handle_name(self.handle, self.bdb_version)
+
+    @property
+    def aux_valid(self) -> bool:
+        return self.bdb_version >= BDB_VER_AUX_CHANNEL
+
+    @property
+    def aux_ddi(self) -> Optional[str]:
+        return DP_AUX_TO_DDI.get(self.aux_channel) if self.aux_valid else None
+
+    @property
+    def hpd_status(self) -> int:
+        return (self.raw[CHILD_OFF_CAPS] >> 3) & 0x3 if len(self.raw) > CHILD_OFF_CAPS else 0
+
+    @property
+    def hpd_invert(self) -> Optional[bool]:
+        if self.bdb_version < BDB_VER_HPD_INVERT or len(self.raw) <= CHILD_OFF_FLAGS:
+            return None
+        return bool(self.raw[CHILD_OFF_FLAGS] & 0x10)
+
+    @property
+    def usb_type_c(self) -> Optional[bool]:
+        if self.bdb_version < BDB_VER_TYPEC or len(self.raw) <= CHILD_OFF_TYPEC:
+            return None
+        return bool(self.raw[CHILD_OFF_TYPEC] & 0x01)
+
+    @property
+    def tbt(self) -> Optional[bool]:
+        if self.bdb_version < BDB_VER_TBT or len(self.raw) <= CHILD_OFF_TYPEC:
+            return None
+        return bool(self.raw[CHILD_OFF_TYPEC] & 0x02)
 
 
 def extract_pcir_device_id(data: bytes) -> Optional[int]:
@@ -707,12 +816,17 @@ class VBTParser:
         self.data = data
         self.vbt_offset = 0
         self.bdb_offset = 0
-        self.vbt_version = 0
-        self.bdb_version = 0
+        self.vbt_version = 0          # VBT header version (usually 100)
+        self.bdb_version = 0          # BDB version: decides which fields are valid
+        self.vbt_size = 0
+        self.vbt_checksum = 0
+        self.checksum_ok: Optional[bool] = None
+        self.child_size = 0
         self.detected_pcir_device_id: Optional[int] = extract_pcir_device_id(data)
         self.blocks: Dict[int, bytes] = {}
         self.child_devices: List[ChildDevice] = []
         self.warnings: List[str] = []
+        self.notes: List[str] = []    # informational, shown with --verbose
         self._parse()
 
     @property
@@ -728,9 +842,11 @@ class VBTParser:
         if vbt_pos + VBT_HEADER_SIZE > len(data):
             raise ValueError("truncated VBT header")
         self.vbt_offset = vbt_pos
-        self.vbt_version = struct.unpack_from("<H", data, vbt_pos + 20)[0]
-        bdb_pos = vbt_pos + struct.unpack_from("<I", data, vbt_pos + 28)[0]
+        (self.vbt_version, _hdr_size, self.vbt_size, self.vbt_checksum, _res,
+         bdb_rel) = struct.unpack_from("<HHHBBI", data, vbt_pos + 20)
+        self._verify_checksum(vbt_pos)
 
+        bdb_pos = vbt_pos + bdb_rel
         if data[bdb_pos:bdb_pos + len(BDB_SIGNATURE)] != BDB_SIGNATURE:
             found = data.find(BDB_SIGNATURE, vbt_pos)
             if found == -1:
@@ -756,12 +872,23 @@ class VBTParser:
                 size = struct.unpack_from("<I", data, bdb_pos + index + 4)[0]
             index += 3
             if index + size > total:
-                self.warnings.append(f"BDB block {block_id} runs past the end of the BDB; stopped parsing there.")
+                self.notes.append(f"BDB block {block_id} runs past the end of the BDB; blocks after it are ignored.")
                 break
             self.blocks.setdefault(block_id, data[bdb_pos + index:bdb_pos + index + size])
             index += size
 
         self._parse_child_devices()
+
+    def _verify_checksum(self, vbt_pos: int) -> None:
+        """All vbt_size bytes (checksum byte included) add up to 0 mod 256 (checked on real VBTs)."""
+        if self.vbt_size < VBT_HEADER_SIZE or vbt_pos + self.vbt_size > len(self.data):
+            self.warnings.append(f"VBT size field ({self.vbt_size}) does not fit the file; checksum not verified.")
+            return
+        total = sum(self.data[vbt_pos:vbt_pos + self.vbt_size]) & 0xFF
+        self.checksum_ok = total == 0
+        if not self.checksum_ok:
+            self.warnings.append(f"VBT checksum mismatch: the {self.vbt_size} bytes sum to 0x{total:02X}, "
+                                 f"expected 0x00. The dump may be modified or incomplete.")
 
     def _parse_child_devices(self) -> None:
         defs = self.blocks.get(BDB_GENERAL_DEFINITIONS)
@@ -773,6 +900,11 @@ class VBTParser:
         if child_size < LEGACY_CHILD_DEVICE_CONFIG_SIZE:
             raise ValueError(f"child device size {child_size} is smaller than the minimum "
                              f"{LEGACY_CHILD_DEVICE_CONFIG_SIZE}")
+        self.child_size = child_size
+        expected = expected_child_size(self.bdb_version)
+        if expected is not None and expected != child_size:
+            self.notes.append(f"child device size {child_size} differs from the size i915 expects for "
+                              f"BDB {self.bdb_version} ({expected}); parsing continues like i915 does.")
         count = (len(defs) - GENERAL_DEFINITIONS_HEADER_SIZE) // child_size
         for slot in range(count):
             start = GENERAL_DEFINITIONS_HEADER_SIZE + slot * child_size
@@ -788,6 +920,8 @@ class VBTParser:
                 ddc_pin=chunk[CHILD_OFF_DDC_PIN],
                 aux_channel=chunk[CHILD_OFF_AUX_CHANNEL],
                 raw=bytes(chunk),
+                handle=struct.unpack_from("<H", chunk, CHILD_OFF_HANDLE)[0],
+                bdb_version=self.bdb_version,
             ))
 
 
@@ -803,6 +937,8 @@ CONNECTOR_TYPE_BY_KIND = {
     "DP++": CON_TYPE_HDMI,     # dual-mode port: patched as HDMI
     "HDMI": CON_TYPE_HDMI,
 }
+EXTERNAL_KINDS = ("DP", "DP++", "HDMI", "DVI")
+DDC_KINDS = ("HDMI", "DVI", "DP++")      # connectors that talk DDC over a GMBUS pin
 
 
 @dataclass
@@ -818,50 +954,88 @@ class ConnectorPatch:
         return pack_u32_le(self.con_type)
 
 
-def build_connector_patches(devices: List[ChildDevice]) -> Tuple[List[ConnectorPatch], List[str]]:
+def _external_bus_id(dev: ChildDevice, bus_source: str, warnings: List[str]) -> Optional[int]:
+    """Apple bus-id for an external connector: from its DDI (default) or from the VBT ddc_pin."""
+    by_ddi = EXTERNAL_BUS_ID_BY_DDI.get(dev.ddi or "")
+    legacy_ddc = dev.ddc_pin if dev.ddc_pin in LEGACY_GMBUS_PINS else None
+    if dev.kind in DDC_KINDS:
+        if bus_source == "ddc":
+            if legacy_ddc is not None:
+                return legacy_ddc
+            warnings.append(f"Slot {dev.slot} ({dev.kind}): ddc_pin 0x{dev.ddc_pin:02X} is not a legacy GMBUS "
+                            f"pin (4, 5 or 6); using the DDI-derived bus-id instead.")
+        elif legacy_ddc is not None and by_ddi is not None and legacy_ddc != by_ddi:
+            warnings.append(f"Slot {dev.slot} ({dev.kind}, DDI {dev.ddi}): the VBT ddc_pin 0x{legacy_ddc:02X} "
+                            f"differs from the DDI-derived bus-id {by_ddi}. If this port stays dark, "
+                            f"try --bus-id-source ddc.")
+    return by_ddi
+
+
+def build_connector_patches(
+    devices: List[ChildDevice],
+    first_index: Optional[int] = None,
+    max_connectors: int = MAX_CONNECTORS,
+    bus_source: str = "ddi",
+) -> Tuple[List[ConnectorPatch], List[str]]:
     """
     Turn VBT connectors into framebuffer-conN-* patches.
 
-    Index, bus-id and pipe follow the pattern in the FAQ dumps: with an internal panel
-    the panel is con0 (bus 0, pipe 8) and externals follow from con1; without one the
-    externals are con1.. (the desktop framebuffers list no con0). Check that these
-    indices match the framebuffer you end up using.
+    Analog, MIPI and unknown devices are skipped. macOS framebuffers hold at most four
+    connectors (con0..con3), so the internal panel (LFP1 first) is kept before external
+    ports (ordered by DDI) and the rest is reported. Index, bus-id and pipe follow the
+    FAQ dumps: with an internal panel the panel is con0 (bus 0, pipe 8) and externals follow;
+    without one the externals start at con1, like the FAQ's desktop framebuffers. Use
+    first_index to override.
     """
     warnings: List[str] = []
-    internals = [d for d in devices if d.is_internal_panel]
-    externals = [d for d in devices if d.kind in ("DP", "DP++", "HDMI", "DVI")]
     for d in devices:
         if d.kind in ("Analog", "MIPI", "Unknown"):
             warnings.append(f"Ignored VBT slot {d.slot} ({d.kind}, device_type 0x{d.device_type:04X}).")
 
-    patches: List[ConnectorPatch] = []
+    internals = sorted((d for d in devices if d.is_internal_panel),
+                       key=lambda d: (d.handle != 0x0008, d.slot))
+    externals = sorted((d for d in devices if d.kind in EXTERNAL_KINDS),
+                       key=lambda d: (d.ddi or "~", d.slot))
     if len(internals) > 1:
         warnings.append("More than one internal panel in the VBT; only the first is patched.")
-    if internals:
-        patches.append(ConnectorPatch(0, INTERNAL_BUS_ID, CONNECTOR_TYPE_BY_KIND[internals[0].kind],
-                                      INTERNAL_PIPE, internals[0]))
-        pipes = EXTERNAL_PIPES_WITH_PANEL
-    else:
-        pipes = EXTERNAL_PIPES_NO_PANEL
+    if first_index is None:
+        first_index = 0 if internals else 1
+    limit = max(0, min(max_connectors, MAX_CONNECTORS - first_index))
 
-    used_bus_ids = set()
-    next_index = 1
-    for d in sorted(externals, key=lambda dev: (dev.ddi or "~", dev.slot)):
-        bus_id = EXTERNAL_BUS_ID_BY_DDI.get(d.ddi or "")
+    # (device, bus-id, internal?) in priority order
+    candidates: List[Tuple[ChildDevice, int, bool]] = []
+    if internals:
+        candidates.append((internals[0], INTERNAL_BUS_ID, True))
+    used_bus_ids = {INTERNAL_BUS_ID} if internals else set()
+    for d in externals:
+        bus_id = _external_bus_id(d, bus_source, warnings)
         if bus_id is None:
             warnings.append(f"Ignored VBT slot {d.slot} ({d.kind}): DVO port 0x{d.dvo_port:02X} "
                             f"(DDI {d.ddi or '?'}) has no verified Apple bus-id; patch it by hand.")
             continue
         if bus_id in used_bus_ids:
-            warnings.append(f"Ignored VBT slot {d.slot} ({d.kind}): DDI {d.ddi} is already used by another connector.")
+            warnings.append(f"Ignored VBT slot {d.slot} ({d.kind}): bus-id {bus_id} is already used by another connector.")
             continue
         used_bus_ids.add(bus_id)
-        slot_in_pool = len(used_bus_ids) - 1
-        if slot_in_pool >= len(pipes):
-            warnings.append("More external connectors than display pipes; pipes are being reused.")
-        pipe = pipes[slot_in_pool % len(pipes)]
-        patches.append(ConnectorPatch(next_index, bus_id, CONNECTOR_TYPE_BY_KIND[d.kind], pipe, d))
-        next_index += 1
+        candidates.append((d, bus_id, False))
+
+    kept, dropped = candidates[:limit], candidates[limit:]
+    if dropped:
+        warnings.append(f"macOS supports at most {limit} connector(s) here (con{first_index}..con{first_index + limit - 1}); "
+                        f"not patched: " + ", ".join(f"{d.handle_label} ({d.kind}, DDI {d.ddi or '?'})"
+                                                   for d, _, _ in dropped) + ".")
+
+    has_panel = bool(kept) and kept[0][2]
+    pipes = EXTERNAL_PIPES_WITH_PANEL if has_panel else EXTERNAL_PIPES_NO_PANEL
+    patches: List[ConnectorPatch] = []
+    ext_count = 0
+    for offset, (d, bus_id, internal) in enumerate(kept):
+        if internal:
+            pipe = INTERNAL_PIPE
+        else:
+            pipe = pipes[ext_count % len(pipes)]
+            ext_count += 1
+        patches.append(ConnectorPatch(first_index + offset, bus_id, CONNECTOR_TYPE_BY_KIND[d.kind], pipe, d))
     return patches, warnings
 
 
@@ -909,14 +1083,17 @@ def generate_opencore_patch(
     connectors: Optional[List[ConnectorPatch]] = None,
     unifiedmem: bool = False,
     rps_control: bool = False,
+    portcount: Optional[int] = None,
 ) -> Dict[str, bytes]:
     """Ordered DeviceProperties for PciRoot(0x0)/Pci(0x2,0x0). All integers go through pack_u32_le."""
     props: Dict[str, bytes] = {"AAPL,ig-platform-id": platform_id_bytes}
     if spoof_bytes is not None:
         props["device-id"] = spoof_bytes
     props.update(extra_properties or {})
-    if connectors or unifiedmem:
+    if connectors or unifiedmem or portcount is not None:
         props["framebuffer-patch-enable"] = pack_u32_le(1)
+    if portcount is not None:
+        props["framebuffer-portcount"] = pack_u32_le(portcount)
     for c in connectors or []:
         props[f"framebuffer-con{c.index}-enable"] = pack_u32_le(1)
         props[f"framebuffer-con{c.index}-busid"] = pack_u32_le(c.bus_id)
@@ -991,6 +1168,44 @@ def render_summary(res: ResolutionResult, pcir: Optional[int]) -> str:
     return "\n".join(lines)
 
 
+def _ascii_table(headers: List[str], rows: List[List[str]]) -> str:
+    widths = [max([len(h)] + [len(r[i]) for r in rows]) for i, h in enumerate(headers)]
+    sep = "+" + "+".join("-" * (w + 2) for w in widths) + "+"
+    out = [sep, "| " + " | ".join(h.ljust(widths[i]) for i, h in enumerate(headers)) + " |", sep]
+    for r in rows:
+        out.append("| " + " | ".join(r[i].ljust(widths[i]) for i in range(len(r))) + " |")
+    out.append(sep)
+    return "\n".join(out)
+
+
+def render_port_summary(vbt: VBTParser) -> str:
+    """One row per VBT child device: the physical ports the firmware defines."""
+    headers = ["Slot", "Handle", "DVO", "DDI", "Type", "dev_type", "AUX", "DDC", "I2C", "HPD", "Notes"]
+    rows = []
+    for d in vbt.child_devices:
+        if not d.aux_valid:
+            aux = "n/a"
+        elif d.aux_channel:
+            aux = f"{d.aux_ddi or '?'} (0x{d.aux_channel:02X})"
+        else:
+            aux = "-"
+        notes = []
+        if d.usb_type_c:
+            notes.append("USB-C")
+        if d.tbt:
+            notes.append("TBT")
+        if d.kind in ("Analog", "MIPI", "Unknown"):
+            notes.append(f"ignored ({d.kind})")
+        rows.append([
+            str(d.slot), d.handle_label, f"0x{d.dvo_port:02X}", d.ddi or "-", d.kind,
+            f"0x{d.device_type:04X}", aux,
+            f"0x{d.ddc_pin:02X}" if d.ddc_pin else "-", f"0x{d.i2c_pin:02X}" if d.i2c_pin else "-",
+            f"st={d.hpd_status}" + (",inv" if d.hpd_invert else ""),
+            ", ".join(notes) or "-",
+        ])
+    return _ascii_table(headers, rows) if rows else "(no display devices in the VBT)"
+
+
 def render_connector_table(patches: List[ConnectorPatch]) -> str:
     headers = ["Property", "DDI", "DVO", "Connector", "Bus ID", "Type bytes", "Pipe"]
     rows = [[f"con{c.index}", c.source.ddi or "-", f"0x{c.source.dvo_port:02X}", c.source.kind,
@@ -1031,6 +1246,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--backlight-fix", action="store_true",
                    help="add the backlight register fix for KBL/CFL/ICL laptops "
                         "(alternative fix on macOS 13.4+, per the FAQ)")
+    p.add_argument("--mobile", action="store_true",
+                   help="laptop mode: mobile framebuffer, at most 3 connectors (con0..con2) "
+                        "and framebuffer-portcount = 3")
+    p.add_argument("--first-con", type=int, choices=range(0, 4), metavar="N",
+                   help="index of the first framebuffer-conN patch (default: 0 with an internal panel, "
+                        "otherwise 1, like the FAQ framebuffers)")
+    p.add_argument("--bus-id-source", choices=("ddi", "ddc"), default="ddi",
+                   help="bus-id of HDMI/DVI ports: from the DDI (default) or from the VBT ddc_pin "
+                        "(experimental; only valid for legacy GMBUS pins 4, 5, 6)")
+    p.add_argument("--verbose", action="store_true", help="show parser notes")
     p.add_argument("-m", "--merge", help="merge the patch into this config.plist (a .bak copy is written first)")
     p.add_argument("-o", "--output", help="write the XML snippet to this file")
     p.add_argument("--json", action="store_true", help="print machine-readable output")
@@ -1056,7 +1281,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     except ValueError as exc:
         return _fail(f"cannot parse VBT: {exc}", 1)
 
-    if args.form_factor:
+    if args.mobile and args.form_factor not in (None, FormFactor.MOBILE.value):
+        return _fail("--mobile cannot be combined with -f " + args.form_factor, 2)
+    if args.mobile:
+        form_factor = FormFactor.MOBILE
+    elif args.form_factor:
         form_factor = FormFactor(args.form_factor)
     else:
         has_panel = any(d.is_internal_panel for d in vbt.display_devices)
@@ -1084,7 +1313,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     connectors: List[ConnectorPatch] = []
     conn_warnings: List[str] = []
     if res.form_factor != FormFactor.HEADLESS:
-        connectors, conn_warnings = build_connector_patches(vbt.display_devices)
+        connectors, conn_warnings = build_connector_patches(
+            vbt.child_devices, first_index=args.first_con,
+            max_connectors=MOBILE_MAX_CONNECTORS if args.mobile else MAX_CONNECTORS,
+            bus_source=args.bus_id_source)
     extras = dict(res.extra_properties)
     backlight_warnings: List[str] = []
     if args.backlight_fix:
@@ -1103,12 +1335,20 @@ def main(argv: Optional[List[str]] = None) -> int:
                                  "Pass one with -p (and --spoof-id if the device-id needs a spoof).")
     else:
         props = generate_opencore_patch(res.platform_id_bytes, res.spoof_bytes, extras,
-                                        connectors, args.unifiedmem, args.rps_control)
+                                        connectors, args.unifiedmem, args.rps_control,
+                                        portcount=MOBILE_MAX_CONNECTORS if args.mobile else None)
 
     if args.json:
         out = {
             "app": PROG_NAME, "version": __version__, "target_macos": args.target_macos,
             "vbt_version": vbt.vbt_version, "bdb_version": vbt.bdb_version,
+            "checksum": {"value": vbt.vbt_checksum, "ok": vbt.checksum_ok},
+            "child_device_size": vbt.child_size,
+            "ports": [{"slot": d.slot, "handle": d.handle_label, "dvo_port": d.dvo_port, "ddi": d.ddi,
+                       "type": d.kind, "device_type": d.device_type, "aux_channel": d.aux_channel if d.aux_valid else None,
+                       "ddc_pin": d.ddc_pin, "i2c_pin": d.i2c_pin, "hpd_status": d.hpd_status,
+                       "hpd_invert": d.hpd_invert, "usb_type_c": d.usb_type_c, "tbt": d.tbt}
+                      for d in vbt.child_devices],
             "device_id": f"0x{res.device_id_str}", "status": res.status.value, "reason": res.reason,
             "form_factor": res.form_factor.value,
             "spoof_device_id": f"0x{res.spoof_target:04X}" if res.spoof_target is not None else None,
@@ -1124,8 +1364,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         return exit_code
 
     print(f"{PROG_NAME} {__version__}")
-    print(f"Input        : {args.input} ({len(raw)} bytes), VBT 0x{vbt.vbt_version:04X}, BDB {vbt.bdb_version}")
-    print(f"Displays     : {len(vbt.display_devices)} usable VBT connector(s)\n")
+    print(f"Input        : {args.input} ({len(raw)} bytes), VBT header version {vbt.vbt_version}, BDB {vbt.bdb_version}")
+    state = {True: "OK", False: "MISMATCH", None: "not verified"}[vbt.checksum_ok]
+    print(f"VBT checksum : 0x{vbt.vbt_checksum:02X} ({state}), child device size {vbt.child_size}\n")
+    print("Display devices defined in the VBT:")
+    print(render_port_summary(vbt))
+    if args.verbose:
+        for note in vbt.notes:
+            print(f"[i] {note}")
+    print()
     print(render_summary(res, pcir))
     print()
     for w in all_warnings:
