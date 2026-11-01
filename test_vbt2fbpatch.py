@@ -251,6 +251,49 @@ class Patch(unittest.TestCase):
         self.assertEqual(len(warnings), 2)
 
 
+class Backlight(unittest.TestCase):
+    ALT = "enable-backlight-registers-alternative-fix"
+    BLR = "enable-backlight-registers-fix"
+
+    def pick(self, dev_id, macos):
+        return v.select_backlight_property(v.resolve_igpu(dev_id, macos))
+
+    def test_whiskey_lake_uses_coffee_lake_driver_after_spoof(self):
+        self.assertEqual(self.pick("3EA0", "14.0")[0], self.ALT)      # macOS 13.4+: alternative fix
+        self.assertEqual(self.pick("3EA0", "13.4")[0], self.ALT)
+        self.assertEqual(self.pick("3EA0", "13.3")[0], self.BLR)      # before 13.4: classic fix
+        self.assertEqual(self.pick("3EA0", "12.0")[0], self.BLR)
+
+    def test_other_generations(self):
+        self.assertEqual(self.pick("8A52", "14.0")[0], self.BLR)      # Ice Lake is not affected by the 13.4 change
+        self.assertEqual(self.pick("5917", "12.0")[0], self.BLR)      # KBL-R, spoofed to Kaby Lake
+        self.assertEqual(self.pick("1912", "13.4")[0], self.ALT)      # Skylake spoofed to Kaby Lake runs its driver
+        self.assertEqual(self.pick("1912", "13.0")[0], self.BLR)      # ... but the alternative fix starts at 13.4
+        self.assertIsNone(self.pick("1912", "12.0")[0])               # native Skylake: not in the FAQ
+        self.assertIsNone(self.pick("0412", "12.0")[0])               # Haswell
+        self.assertTrue(self.pick("0412", "12.0")[1])                 # ... and the user is told
+
+    def test_cli_is_opt_in(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "vbt.bin")
+            with open(path, "wb") as f:
+                f.write(build_vbt([EDP, DP_B, HDMI_D]))
+
+            def run(*extra):
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out):
+                    code = v.main(["-i", path, "-d", "3EA0", "--json", *extra])
+                return code, json.loads(out.getvalue())
+
+            code, data = run()
+            self.assertNotIn(self.ALT, data["properties"])
+            code, data = run("--backlight-fix")
+            self.assertEqual(code, 0)
+            self.assertEqual(data["properties"][self.ALT]["hex"], "01000000")
+            self.assertNotIn(self.BLR, data["properties"])
+            self.assertTrue(any("-igfxblr" in w for w in data["warnings"]))
+
+
 class CLI(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()

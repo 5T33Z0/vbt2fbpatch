@@ -866,6 +866,39 @@ def build_connector_patches(devices: List[ChildDevice]) -> Tuple[List[ConnectorP
 
 
 # ==============================================================================
+# Backlight register fix (FAQ.IntelHD.en.md)
+#   * Certain mobile Kaby Lake, Coffee Lake and Ice Lake laptops need the backlight
+#     registers fix: property enable-backlight-registers-fix on IGPU (-igfxblr).
+#   * On macOS 13.4+ the Kaby/Coffee Lake drivers need the alternative fix instead:
+#     enable-backlight-registers-alternative-fix (-igfxblt). Ice Lake is not affected.
+# ==============================================================================
+
+BACKLIGHT_FIX_PROPERTY = "enable-backlight-registers-fix"
+BACKLIGHT_ALT_FIX_PROPERTY = "enable-backlight-registers-alternative-fix"
+BACKLIGHT_ALT_FIX_MIN_MACOS = (13, 4, 0)
+_KBL_CFL_DRIVER_ARCHS = {"Kaby Lake", "Kaby Lake Refresh", "Coffee Lake", "Coffee Lake Refresh",
+                         "Whiskey Lake", "Comet Lake"}
+
+
+def select_backlight_property(res: ResolutionResult) -> Tuple[Optional[str], List[str]]:
+    """Pick the backlight register fix property for this iGPU and macOS version (opt-in)."""
+    arch = res.model.architecture if res.model else None
+    if res.spoof_target is not None and res.spoof_target in INTEL_IGPU_DATABASE:
+        arch = INTEL_IGPU_DATABASE[res.spoof_target].architecture     # the driver that actually loads
+    if arch in _KBL_CFL_DRIVER_ARCHS:
+        if parse_macos_version(res.target_macos) >= BACKLIGHT_ALT_FIX_MIN_MACOS:
+            return BACKLIGHT_ALT_FIX_PROPERTY, [
+                "Backlight: using the alternative fix (macOS 13.4+). Remove -igfxblr and the property "
+                f"{BACKLIGHT_FIX_PROPERTY} if you have them; add -igfxbls as well if you use the "
+                "Backlight Smoother."]
+        return BACKLIGHT_FIX_PROPERTY, []
+    if arch == "Ice Lake":
+        return BACKLIGHT_FIX_PROPERTY, []
+    return None, ["The FAQ documents the backlight register fix only for Kaby Lake, Coffee Lake and "
+                  "Ice Lake graphics; --backlight-fix was ignored for this iGPU."]
+
+
+# ==============================================================================
 # OpenCore DeviceProperties generation
 # ==============================================================================
 
@@ -995,6 +1028,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--spoof-id", help="inject this device-id instead of the FAQ value (hex, e.g. 3E9B)")
     p.add_argument("--unifiedmem", action="store_true", help="add framebuffer-unifiedmem (DVMT workaround)")
     p.add_argument("--rps-control", action="store_true", help="add rps-control")
+    p.add_argument("--backlight-fix", action="store_true",
+                   help="add the backlight register fix for KBL/CFL/ICL laptops "
+                        "(alternative fix on macOS 13.4+, per the FAQ)")
     p.add_argument("-m", "--merge", help="merge the patch into this config.plist (a .bak copy is written first)")
     p.add_argument("-o", "--output", help="write the XML snippet to this file")
     p.add_argument("--json", action="store_true", help="print machine-readable output")
@@ -1049,7 +1085,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     conn_warnings: List[str] = []
     if res.form_factor != FormFactor.HEADLESS:
         connectors, conn_warnings = build_connector_patches(vbt.display_devices)
-    all_warnings = vbt.warnings + res.warnings + conn_warnings
+    extras = dict(res.extra_properties)
+    backlight_warnings: List[str] = []
+    if args.backlight_fix:
+        backlight_prop, backlight_warnings = select_backlight_property(res)
+        if backlight_prop:
+            extras[backlight_prop] = pack_u32_le(1)
+    all_warnings = vbt.warnings + res.warnings + conn_warnings + backlight_warnings
 
     props: Optional[Dict[str, bytes]] = None
     exit_code = 0
@@ -1060,7 +1102,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         exit_code, problem = 2, ("No platform-id could be chosen for this device. "
                                  "Pass one with -p (and --spoof-id if the device-id needs a spoof).")
     else:
-        props = generate_opencore_patch(res.platform_id_bytes, res.spoof_bytes, res.extra_properties,
+        props = generate_opencore_patch(res.platform_id_bytes, res.spoof_bytes, extras,
                                         connectors, args.unifiedmem, args.rps_control)
 
     if args.json:

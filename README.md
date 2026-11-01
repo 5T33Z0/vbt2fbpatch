@@ -120,6 +120,7 @@ python3 vbt2fbpatch.py -i vbt.bin -d 3E9B -t 14.0 -m /path/to/config.plist
 | `--spoof-id` | Use your own device-id spoof, e.g. `3EA5` |
 | `--unifiedmem` | Add `framebuffer-unifiedmem` (DVMT workaround) |
 | `--rps-control` | Add `rps-control` |
+| `--backlight-fix` | Add the backlight register fix for Kaby Lake, Coffee Lake and Ice Lake laptops. Uses `enable-backlight-registers-alternative-fix` on macOS 13.4 and newer, otherwise `enable-backlight-registers-fix` |
 | `-m`, `--merge` | Merge the patch into this `config.plist` |
 | `-o`, `--output` | Save the XML snippet to a file |
 | `--json` | Machine-readable output |
@@ -134,7 +135,12 @@ python3 vbt2fbpatch.py -i vbt.bin -d 3E9B -t 14.0 -m /path/to/config.plist
 | `UNSUPPORTED` | No macOS driver exists (Intel Xe and newer). Disable the iGPU and use a supported AMD GPU. |
 | `UNKNOWN` | Device-id not in the table. Pass `-p` (and `--spoof-id` if needed) yourself. |
 
-Exit codes: `0` success, `1` file or parse error, `2` missing or invalid input, `3` unsupported iGPU.
+**Exit codes**: 
+
+- `0` Success 
+- `1` File or parse error 
+- `2` Missing or invalid input
+- `3` Unsupported iGPU
 
 ---
 
