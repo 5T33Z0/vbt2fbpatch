@@ -97,6 +97,14 @@ The device-id is the second half of the `[8086:xxxx]` pair, for example `3E9B`.
 
 ### 3. Run the tool
 
+Execute the script with the following arguments:
+
+- `-i`: Path to the input VBT file (`vbt.bin`). If the file is located in a different directory, provide its full or relative path.
+- `-d`: Intel iGPU device ID (without the `0x` prefix).
+- Optional Parametrs, here: `-t`: Target macOS version. Check the table below for more otions
+
+Example:
+
 ```bash
 python3 vbt2fbpatch.py -i vbt.bin -d 3E9B -t 14.0
 ```
