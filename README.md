@@ -67,7 +67,7 @@ If the device-id is not in the table, the tool stops and asks you to supply valu
 
 ### 1. Get your VBT
 
-The easiest way is from Linux (a live USB is enough), as root (&rarr; [**Detailed Instructions**](/vbt2fbpatch/docs/dump_vbt.md)):
+The easiest way is from Linux (a live USB is enough), as root (&rarr; [**Detailed Instructions**](/docs/dump_vbt.md)):
 
 ```bash
 sudo cat /sys/kernel/debug/dri/0/i915_vbt > vbt.bin
