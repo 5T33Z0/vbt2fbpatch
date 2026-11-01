@@ -4,9 +4,9 @@ Generate OpenCore framebuffer patches for Intel iGPUs from your machine's own fi
 
 `vbt2fbpatch` reads the display connector table from a dumped Intel Video BIOS Table (VBT), checks your iGPU against the [**WhateverGreen Intel HD manual**](https://github.com/acidanthera/WhateverGreen/blob/master/Manual/FAQ.IntelHD.en.md), and prints a ready-to-use `DeviceProperties` snippet for your `config.plist`.
 
-> **Status: pre-release.** 
-> 
-> The tool is tested against FAQ reference and some VBT files, not yet against a wide range of real boards. Treat the output as a well-informed starting point, not a guaranteed working patch.
+> [!NOTE]
+>
+> Treat this as a proof of concept. The original web app, built in Google AI Studio, has a GUI with more manual settings, but I haven't managed to turn it into a native macOS app yet. The command-line tool is tested against the example values in the WhateverGreen manual and a few VBT files, not yet on a wide range of real boards. Treat the output as a well-informed starting point, not a guaranteed working patch.
 
 ---
 
