@@ -238,10 +238,11 @@ This project was written entirely with AI. The first version came from Google AI
 
 ---
 
-## Credits
+## Credits & Resources
 
-- [WhateverGreen](https://github.com/acidanthera/WhateverGreen) and the Acidanthera team for the Intel HD manual this tool is built on
+- [**WhateverGreen**](https://github.com/acidanthera/WhateverGreen) and the Acidanthera team for the Intel HD manual this tool is built on
 - The Linux i915 driver and igt-gpu-tools' `intel_vbt_decode.c` (Intel Corporation, MIT) for the public VBT format definitions, used to cross-check this tool's decoder
+- [**About Video BIOS Table (VBT)**](https://github.com/ZoranStojsavljevic/Video-BIOS-Table-parser-assembler/wiki/Video-BIOS-Table-(VBT))
 
 ## License
 
