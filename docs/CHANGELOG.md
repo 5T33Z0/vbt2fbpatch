@@ -2,6 +2,15 @@
 
 All notable changes to vbt2fbpatch are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.4.0] - 2026-11-02
+
+### Added
+- The connector table shows each connector's flags: the default of the chosen framebuffer, or the value you set. A "Flags" block lists the flag names (from IntelFramebuffer.bt) for the framebuffer flags and for each connector.
+- `--con-flags HEX` writes `framebuffer-conN-flags` on the external connectors; `--fb-flags HEX` writes `framebuffer-flags`. Both are off by default, so the framebuffer keeps its own flags.
+- Table of the FAQ's framebuffer dumps (index, bus-id, pipe, type and flags per connector, plus framebuffer flags) for every platform-id the tool can select. It is used for the default flags and for a consistency check.
+- Warning when a patched connector does not match the chosen framebuffer: its bus-id belongs to another connector index, or the framebuffer has no connector with that bus-id.
+- Default and override flags in the JSON output (`default_flags`, `flags`).
+
 ## [3.3.1] - 2026-11-02
 
 ### Fixed

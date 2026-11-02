@@ -70,7 +70,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Tuple, Union
 
-__version__ = "3.3.1"
+__version__ = "3.4.0"
 PROG_NAME = "vbt2fbpatch"
 FAQ_URL = "https://github.com/acidanthera/WhateverGreen/blob/master/Manual/FAQ.IntelHD.en.md"
 IGPU_PCI_PATH = "PciRoot(0x0)/Pci(0x2,0x0)"
@@ -485,6 +485,128 @@ for _did, _name, _arch in (
 KNOWN_PLATFORM_IDS = {p.platform_id
                       for d in INTEL_IGPU_DATABASE.values()
                       for p in d.profiles + d.spoofed_profiles}
+
+
+# ==============================================================================
+# Framebuffer and connector flags
+# Names and values: WhateverGreen's IntelFramebuffer.bt, as collected in
+# OC-Little-Translated (Framebuffer_Connector_Flags.md). Defaults: the FAQ's framebuffer dumps.
+# ==============================================================================
+
+CONNECTOR_FLAG_NAMES: Dict[int, str] = {
+    0x1: "CNAlterAppertureRequirements", 0x2: "CNUnknownFlag_2", 0x4: "CNUnknownFlag_4",
+    0x8: "CNConnectorAlwaysConnected", 0x10: "CNUnknownFlag_10", 0x20: "CNUnknownFlag_20",
+    0x40: "CNDisableBlitTranslationTable", 0x80: "CNUseMiscIoPowerWell", 0x100: "CNUsePowerWell2",
+    0x200: "CNUnknownFlag_200", 0x400: "CNUnknownFlag_400", 0x800: "CNIncreaseLaneCount",
+    0x1000: "CNUnknownFlag_1000", 0x2000: "CNUnknownFlag_2000", 0x4000: "CNUnknownFlag_4000",
+    0x8000: "CNUnknownFlag_8000",
+}
+
+FRAMEBUFFER_FLAG_NAMES: Dict[int, str] = {
+    0x1: "FBAvoidFastLinkTraining", 0x2: "FBFramebufferCommonMemory", 0x4: "FBFramebufferCompression",
+    0x8: "FBEnableSliceFeatures", 0x10: "FBDynamicFBCEnable", 0x20: "FBUseVideoTurbo",
+    0x40: "FBForcePowerAlwaysConnected", 0x80: "FBDisableHighBitrateMode2",
+    0x100: "FBBoostPixelFrequencyLimit", 0x200: "FBLimit4KSourceSize",
+    0x400: "FBAlternatePWMIncrement1", 0x800: "FBAlternatePWMIncrement2", 0x1000: "FBDisableFeatureIPS",
+    0x2000: "FBUnknownFlag_2000", 0x4000: "FBAllowConnectorRecover", 0x8000: "FBUnknownFlag_8000",
+    0x10000: "FBUnknownFlag_10000", 0x20000: "FBUnknownFlag_20000", 0x40000: "FBDisableGFMPPFM",
+    0x80000: "FBUnknownFlag_80000", 0x100000: "FBUnknownFlag_100000", 0x200000: "FBEnableDynamicCDCLK",
+    0x400000: "FBUnknownFlag_400000", 0x800000: "FBSupport5KSourceSize",
+}
+
+# platform-id -> (framebuffer flags, ((index, bus-id, pipe, type, flags), ...)); index 255 = unused slot.
+# Generated from the framebuffer dumps in FAQ.IntelHD.en.md for the platform-ids this tool can select.
+FRAMEBUFFER_DUMPS: Dict[int, Tuple[int, Tuple[Tuple[int, int, int, int, int], ...]]] = {
+    0x04120004: (0x00000000, ()),
+    0x0A260006: (0x0000000F, ((0, 0x00, 8, 0x2, 0x30), (1, 0x05, 9, 0x400, 0x87), (2, 0x04, 9, 0x400, 0x87),)),
+    0x0D220003: (0x00000402, ((1, 0x05, 9, 0x400, 0x87), (2, 0x04, 10, 0x400, 0x87), (3, 0x06, 8, 0x400, 0x11),)),
+    0x16220007: (0x000BB306, ((1, 0x05, 9, 0x400, 0x507), (2, 0x04, 10, 0x400, 0x507), (3, 0x06, 8, 0x400, 0x11),)),
+    0x16260006: (0x00000B0B, ((0, 0x00, 8, 0x2, 0x230), (1, 0x05, 11, 0x400, 0x507), (2, 0x04, 11, 0x400, 0x507),)),
+    0x19120000: (0x0000110F, ((255, 0x00, 0, 0x1, 0x20), (1, 0x05, 9, 0x400, 0x187), (2, 0x04, 10, 0x400, 0x187),)),
+    0x19120001: (0x00040800, ()),
+    0x19160000: (0x0000090F, ((0, 0x00, 8, 0x2, 0x98), (1, 0x05, 9, 0x400, 0x187), (2, 0x04, 10, 0x400, 0x187),)),
+    0x191B0000: (0x0000110F, ((0, 0x00, 8, 0x2, 0x98), (1, 0x05, 9, 0x400, 0x187), (2, 0x04, 10, 0x400, 0x187),)),
+    0x3E910003: (0x00001000, ()),
+    0x3E920003: (0x00001000, ()),
+    0x3E980003: (0x00001000, ()),
+    0x3E9B0000: (0x0000130B, ((0, 0x00, 8, 0x2, 0x98), (1, 0x05, 9, 0x400, 0x187), (2, 0x04, 10, 0x400, 0x187),)),
+    0x3E9B0007: (0x00801302, ((1, 0x05, 9, 0x400, 0x3C7), (2, 0x04, 10, 0x400, 0x3C7), (3, 0x06, 8, 0x400, 0x3C7),)),
+    0x3EA50004: (0x00E30B0A, ((0, 0x00, 8, 0x2, 0x498), (1, 0x05, 9, 0x400, 0x3C7), (2, 0x04, 10, 0x400, 0x3C7),)),
+    0x3EA50009: (0x00830B0A, ((0, 0x00, 8, 0x2, 0x98), (1, 0x05, 9, 0x400, 0x1C7), (2, 0x04, 10, 0x400, 0x1C7),)),
+    0x59120000: (0x0000110B, ((1, 0x05, 9, 0x400, 0x187), (2, 0x04, 10, 0x400, 0x187), (3, 0x06, 10, 0x400, 0x187),)),
+    0x59120003: (0x00001000, ()),
+    0x59160000: (0x00000B0B, ((0, 0x00, 8, 0x2, 0x98), (1, 0x05, 9, 0x400, 0x187), (2, 0x04, 10, 0x800, 0x187),)),
+    0x591B0000: (0x0000130B, ((0, 0x00, 8, 0x2, 0x98), (2, 0x04, 10, 0x800, 0x187), (3, 0x06, 10, 0x400, 0x187),)),
+    0x59260002: (0x00E30B0A, ((0, 0x00, 8, 0x2, 0x498), (1, 0x05, 9, 0x400, 0x3C7), (2, 0x04, 10, 0x400, 0x3C7),)),
+    0x59270004: (0x00E30B0A, ((0, 0x00, 8, 0x2, 0x498), (1, 0x05, 9, 0x400, 0x3C7), (2, 0x04, 10, 0x400, 0x3C7),)),
+    0x8A520000: (0x00008305, ((0, 0x00, 0, 0x2, 0x18), (1, 0x02, 1, 0x400, 0x281), (2, 0x09, 1, 0x400, 0x281), (3, 0x0A, 1, 0x400, 0x281), (4, 0x0B, 1, 0x400, 0x281), (5, 0x0C, 1, 0x400, 0x281),)),
+    0x8A530000: (0x00008305, ((0, 0x00, 0, 0x2, 0x18), (1, 0x02, 1, 0x400, 0x281), (2, 0x09, 1, 0x400, 0x281), (3, 0x0A, 1, 0x400, 0x281), (4, 0x0B, 1, 0x400, 0x281), (5, 0x0C, 1, 0x400, 0x281),)),
+    0x9BC40003: (0x00001000, ()),
+    0x9BC50003: (0x00001000, ()),
+    0x9BC80003: (0x00001000, ()),
+}
+
+
+def describe_flags(value: int, names: Dict[int, str]) -> str:
+    """0x187 -> 'CNAlterAppertureRequirements + CNUnknownFlag_2 + ...'"""
+    parts = [names.get(1 << bit, f"unknown_0x{1 << bit:X}") for bit in range(32) if value >> bit & 1]
+    return " + ".join(parts) if parts else "none"
+
+
+def parse_flags(text: str) -> int:
+    """Flag mask in hex, e.g. 0x3C7 (a plain integer; the tool converts it to little-endian bytes)."""
+    clean = _clean_hex(text)
+    if not clean or len(clean) > 8 or any(c not in "0123456789abcdefABCDEF" for c in clean):
+        raise argparse.ArgumentTypeError(f"invalid flags {text!r}: expected up to 8 hex digits, e.g. 0x3C7")
+    return int(clean, 16)
+
+
+def annotate_connector_flags(patches: List["ConnectorPatch"], platform_id: int,
+                             con_flags: Optional[int] = None) -> List[str]:
+    """
+    Attach the chosen framebuffer's default flags to each connector patch, apply the --con-flags
+    override to external connectors, and report connectors that do not line up with the framebuffer.
+    """
+    warnings: List[str] = []
+    dump = FRAMEBUFFER_DUMPS.get(platform_id)
+    for c in patches:
+        if dump is not None:
+            used = [x for x in dump[1] if x[0] != 255]
+            exact = next((x for x in used if x[0] == c.index and x[1] == c.bus_id), None)
+            by_bus = next((x for x in used if x[1] == c.bus_id), None)
+            match = exact or by_bus
+            if match is not None:
+                c.default_flags = match[4]
+            if exact is None and by_bus is not None:
+                warnings.append(f"con{c.index}: bus-id {c.bus_id} is connector [{by_bus[0]}] in framebuffer "
+                                f"{platform_id:08X}, not [{c.index}]. Check the connector index.")
+            elif exact is None:
+                warnings.append(f"con{c.index}: framebuffer {platform_id:08X} has no connector with bus-id "
+                                f"{c.bus_id}, so its default flags are unknown.")
+        if con_flags is not None and not c.source.is_internal_panel:
+            c.flags = con_flags
+    return warnings
+
+
+def render_flag_details(patches: List["ConnectorPatch"], platform_id: Optional[int],
+                        fb_flags: Optional[int] = None) -> str:
+    """Names of the flag bits that are in play, for the text output."""
+    lines: List[str] = []
+    dump = FRAMEBUFFER_DUMPS.get(platform_id) if platform_id is not None else None
+    if dump is not None:
+        lines.append(f"framebuffer-flags, default of {platform_id:08X}: 0x{dump[0]:08X} = "
+                     f"{describe_flags(dump[0], FRAMEBUFFER_FLAG_NAMES)}")
+    if fb_flags is not None:
+        lines.append(f"framebuffer-flags, --fb-flags: 0x{fb_flags:08X} = "
+                     f"{describe_flags(fb_flags, FRAMEBUFFER_FLAG_NAMES)}")
+    for c in patches:
+        if c.default_flags is not None:
+            lines.append(f"con{c.index} flags, framebuffer default: 0x{c.default_flags:X} = "
+                         f"{describe_flags(c.default_flags, CONNECTOR_FLAG_NAMES)}")
+        if c.flags is not None:
+            lines.append(f"con{c.index} flags, --con-flags: 0x{c.flags:X} = "
+                         f"{describe_flags(c.flags, CONNECTOR_FLAG_NAMES)}")
+    return "\n".join(lines)
 
 
 # ==============================================================================
@@ -992,6 +1114,8 @@ class ConnectorPatch:
     con_type: int
     pipe: int
     source: ChildDevice
+    default_flags: Optional[int] = None   # flags of this connector in the chosen framebuffer
+    flags: Optional[int] = None           # --con-flags override (written as framebuffer-conN-flags)
 
     @property
     def type_bytes(self) -> bytes:
@@ -1136,14 +1260,17 @@ def generate_opencore_patch(
     rps_control: bool = False,
     portcount: Optional[int] = None,
     lspcon_mode: Optional[int] = None,
+    framebuffer_flags: Optional[int] = None,
 ) -> Dict[str, bytes]:
     """Ordered DeviceProperties for PciRoot(0x0)/Pci(0x2,0x0). All integers go through pack_u32_le."""
     props: Dict[str, bytes] = {"AAPL,ig-platform-id": platform_id_bytes}
     if spoof_bytes is not None:
         props["device-id"] = spoof_bytes
     props.update(extra_properties or {})
-    if connectors or unifiedmem or portcount is not None:
+    if connectors or unifiedmem or portcount is not None or framebuffer_flags is not None:
         props["framebuffer-patch-enable"] = pack_u32_le(1)
+    if framebuffer_flags is not None:
+        props["framebuffer-flags"] = pack_u32_le(framebuffer_flags)
     if portcount is not None:
         props["framebuffer-portcount"] = pack_u32_le(portcount)
     for c in connectors or []:
@@ -1151,6 +1278,8 @@ def generate_opencore_patch(
         props[f"framebuffer-con{c.index}-busid"] = pack_u32_le(c.bus_id)
         props[f"framebuffer-con{c.index}-type"] = pack_u32_le(c.con_type)
         props[f"framebuffer-con{c.index}-pipe"] = pack_u32_le(c.pipe)
+        if c.flags is not None:
+            props[f"framebuffer-con{c.index}-flags"] = pack_u32_le(c.flags)
         if c.lspcon:
             props[f"framebuffer-con{c.index}-has-lspcon"] = pack_u32_le(1)
             if lspcon_mode is not None:
@@ -1267,9 +1396,13 @@ def render_port_summary(vbt: VBTParser) -> str:
 
 
 def render_connector_table(patches: List[ConnectorPatch]) -> str:
-    headers = ["Property", "DDI", "DVO", "Connector", "Bus ID", "Type bytes", "Pipe"]
+    headers = ["Property", "DDI", "DVO", "Connector", "Bus ID", "Type bytes", "Pipe", "Flags"]
+    def flags_text(c: ConnectorPatch) -> str:
+        if c.flags is not None:
+            return f"0x{c.flags:X} (set)"
+        return f"0x{c.default_flags:X} (default)" if c.default_flags is not None else "-"
     rows = [[f"con{c.index}", c.source.ddi or "-", f"0x{c.source.dvo_port:02X}", c.source.kind,
-             f"0x{c.bus_id:02X}", c.type_bytes.hex().upper(), str(c.pipe)]
+             f"0x{c.bus_id:02X}", c.type_bytes.hex().upper(), str(c.pipe), flags_text(c)]
             for c in patches]
     widths = [max(len(h), *(len(r[i]) for r in rows)) if rows else len(h) for i, h in enumerate(headers)]
     sep = "+" + "+".join("-" * (w + 2) for w in widths) + "+"
@@ -1383,6 +1516,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
                         "(experimental; only valid for legacy GMBUS pins 4, 5, 6)")
     p.add_argument("--pipe", type=int, metavar="N",
                    help="override the pipe of every connector patch (e.g. 18; some community laptop patches use it)")
+    p.add_argument("--con-flags", type=parse_flags, metavar="HEX",
+                   help="set framebuffer-conN-flags on the external connectors (e.g. 0x3C7). Without it the "
+                        "framebuffer keeps its own flags.")
+    p.add_argument("--fb-flags", type=parse_flags, metavar="HEX",
+                   help="set framebuffer-flags (e.g. 0xE30B0A)")
     p.add_argument("--lspcon-mode", choices=("pcon", "ls"),
                    help="also set framebuffer-conN-preferred-lspcon-mode on ports the VBT marks as LSPCON "
                         "(pcon = DP to HDMI 2.0, ls = HDMI 1.4)")
@@ -1464,6 +1602,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             vbt.child_devices, first_index=args.first_con,
             max_connectors=MOBILE_MAX_CONNECTORS if args.mobile else MAX_CONNECTORS,
             bus_source=args.bus_id_source, pipe_override=args.pipe)
+    flag_notes: List[str] = []
+    if res.platform_id is not None:
+        flag_notes = annotate_connector_flags(connectors, res.platform_id, args.con_flags)
     extras = dict(res.extra_properties)
     backlight_warnings: List[str] = []
     if args.backlight_fix:
@@ -1474,7 +1615,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                     f"framebuffer-con{c.index}-has-lspcon and enable-lspcon-support. The FAQ says the driver is only "
                     f"needed when HDMI 2.0 is routed to the iGPU." for c in connectors if c.lspcon]
     all_warnings = ([detect_note] if detect_note else []) + vbt.warnings + res.warnings + conn_warnings \
-        + backlight_warnings + lspcon_notes
+        + backlight_warnings + lspcon_notes + flag_notes
 
     props: Optional[Dict[str, bytes]] = None
     exit_code = 0
@@ -1488,7 +1629,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         props = generate_opencore_patch(res.platform_id_bytes, res.spoof_bytes, extras,
                                         connectors, args.unifiedmem, args.rps_control,
                                         portcount=MOBILE_MAX_CONNECTORS if args.mobile else None,
-                                        lspcon_mode={"pcon": 1, "ls": 0}.get(args.lspcon_mode))
+                                        lspcon_mode={"pcon": 1, "ls": 0}.get(args.lspcon_mode),
+                                        framebuffer_flags=args.fb_flags)
 
     if args.json:
         out = {
@@ -1507,7 +1649,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             "platform_id": f"{res.platform_id:08X}" if res.platform_id is not None else None,
             "connectors": [{"property": f"con{c.index}", "ddi": c.source.ddi, "kind": c.source.kind,
                             "dvo_port": c.source.dvo_port, "bus_id": c.bus_id,
-                            "type_bytes": c.type_bytes.hex().upper(), "pipe": c.pipe} for c in connectors],
+                            "type_bytes": c.type_bytes.hex().upper(), "pipe": c.pipe,
+                            "default_flags": f"0x{c.default_flags:X}" if c.default_flags is not None else None,
+                            "flags": f"0x{c.flags:X}" if c.flags is not None else None} for c in connectors],
             "properties": {k: {"hex": v.hex().upper(), "base64": base64.b64encode(v).decode("ascii")}
                            for k, v in (props or {}).items()},
             "warnings": all_warnings, "error": problem,
@@ -1537,6 +1681,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     if connectors or res.form_factor != FormFactor.HEADLESS:
         print(render_connector_table(connectors))
         print()
+        details = render_flag_details(connectors, res.platform_id, args.fb_flags)
+        if details:
+            print("Flags (names from IntelFramebuffer.bt):")
+            print(details)
+            print()
     xml = render_opencore_xml(props)
     print("OpenCore DeviceProperties:")
     print(xml)

@@ -542,6 +542,85 @@ class DetectDeviceId(unittest.TestCase):
                     self.assertEqual(v.main(["-i", path, "-d", "3EA0", "--json"]), 0)    # -d still works
 
 
+class Flags(unittest.TestCase):
+    """Framebuffer and connector flags (names and defaults from IntelFramebuffer.bt and the FAQ dumps)."""
+
+    def test_names_decode_known_values(self):
+        self.assertEqual(v.describe_flags(0x187, v.CONNECTOR_FLAG_NAMES),
+                         "CNAlterAppertureRequirements + CNUnknownFlag_2 + CNUnknownFlag_4 + "
+                         "CNUseMiscIoPowerWell + CNUsePowerWell2")
+        self.assertIn("CNConnectorAlwaysConnected", v.describe_flags(0x98, v.CONNECTOR_FLAG_NAMES))
+        self.assertEqual(v.describe_flags(0, v.CONNECTOR_FLAG_NAMES), "none")
+        fb = v.describe_flags(0x00E30B0A, v.FRAMEBUFFER_FLAG_NAMES)
+        self.assertIn("FBEnableDynamicCDCLK", fb)
+        self.assertIn("FBSupport5KSourceSize", fb)
+        self.assertEqual(len(v.CONNECTOR_FLAG_NAMES), 16)
+        self.assertEqual(len(v.FRAMEBUFFER_FLAG_NAMES), 24)
+
+    def test_framebuffer_defaults_match_the_faq_dumps(self):
+        self.assertEqual(v.FRAMEBUFFER_DUMPS[0x3E9B0000][0], 0x130B)
+        self.assertEqual(v.FRAMEBUFFER_DUMPS[0x3EA50009][0], 0x830B0A)
+        self.assertEqual(v.FRAMEBUFFER_DUMPS[0x3EA50004][0], 0xE30B0A)
+        flags = lambda pid: [c[4] for c in v.FRAMEBUFFER_DUMPS[pid][1]]
+        self.assertEqual(flags(0x3E9B0000), [0x98, 0x187, 0x187])
+        self.assertEqual(flags(0x3EA50009), [0x98, 0x1C7, 0x1C7])
+        self.assertEqual(flags(0x3EA50004), [0x498, 0x3C7, 0x3C7])
+        self.assertEqual([c[:3] for c in v.FRAMEBUFFER_DUMPS[0x3E9B0007][1]], [(1, 5, 9), (2, 4, 10), (3, 6, 8)])
+        for pid in v.KNOWN_PLATFORM_IDS:
+            self.assertIn(pid, v.FRAMEBUFFER_DUMPS, f"{pid:08X}")
+
+    def test_default_flags_are_attached_without_emitting_them(self):
+        p = v.VBTParser(build_vbt([EDP, child(0x60D2, 1), child(0x60D2, 2)], bdb_version=230))
+        patches, _ = v.build_connector_patches(p.child_devices)
+        notes = v.annotate_connector_flags(patches, 0x3EA50009)
+        self.assertEqual(notes, [])
+        self.assertEqual([c.default_flags for c in patches], [0x98, 0x1C7, 0x1C7])
+        props = v.generate_opencore_patch(v.serialize_platform_id("3EA50009"), None, None, patches)
+        self.assertFalse([k for k in props if k.endswith("-flags")])      # the framebuffer keeps its own flags
+
+    def test_con_flags_override_only_external_connectors(self):
+        p = v.VBTParser(build_vbt([EDP, child(0x60D2, 1), child(0x60D2, 2)], bdb_version=230))
+        patches, _ = v.build_connector_patches(p.child_devices)
+        v.annotate_connector_flags(patches, 0x3EA50009, con_flags=0x3C7)
+        props = v.generate_opencore_patch(v.serialize_platform_id("3EA50009"), None, None, patches,
+                                          framebuffer_flags=0xE30B0A)
+        self.assertNotIn("framebuffer-con0-flags", props)
+        self.assertEqual(props["framebuffer-con1-flags"].hex(), "c7030000")
+        self.assertEqual(props["framebuffer-con2-flags"].hex(), "c7030000")
+        self.assertEqual(props["framebuffer-flags"].hex(), "0a0be300")
+        self.assertIn("framebuffer-patch-enable", props)
+
+    def test_connectors_that_do_not_fit_the_framebuffer_are_reported(self):
+        p = v.VBTParser(build_vbt([EDP, child(0x60D2, 1)], bdb_version=230))
+        patches, _ = v.build_connector_patches(p.child_devices)
+        notes = v.annotate_connector_flags(patches, 0x3E9B0007)         # desktop framebuffer: no con0, no bus 0
+        self.assertTrue(any("no connector with bus-id 0" in n for n in notes))
+        shifted = v.build_connector_patches(p.child_devices, first_index=2)[0]
+        notes = v.annotate_connector_flags(shifted, 0x3EA50009)
+        self.assertTrue(any("is connector [1]" in n for n in notes))
+
+    def test_cli_flag_options(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "vbt.bin")
+            with open(path, "wb") as f:
+                f.write(build_vbt([EDP, child(0x60D2, 1), child(0x60D2, 2)], bdb_version=230))
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                code = v.main(["-i", path, "-d", "3EA0", "-p", "3EA50004", "--con-flags", "0x3C7", "--json"])
+            data = json.loads(out.getvalue())
+            self.assertEqual(code, 0)
+            self.assertEqual([c["default_flags"] for c in data["connectors"]], ["0x498", "0x3C7", "0x3C7"])
+            self.assertEqual(data["connectors"][1]["flags"], "0x3C7")
+            self.assertEqual(data["properties"]["framebuffer-con1-flags"]["hex"], "C7030000")
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as ctx:
+                v.main(["-i", path, "-d", "3EA0", "--con-flags", "xyz"])
+            self.assertEqual(ctx.exception.code, 2)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                v.main(["-i", path, "-d", "3EA0"])
+            self.assertIn("CNUsePowerWell2", out.getvalue())             # flag names are printed
+
+
 class CLI(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()
