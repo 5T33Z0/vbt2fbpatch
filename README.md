@@ -32,7 +32,7 @@ The answers are spread across the manual, the framebuffer lists and your board's
 **What it does not do**
 
 - It does not replace the WhateverGreen manual. Read the section for your iGPU generation.
-- It does not support Sandy Bridge or Ivy Bridge, and Intel Xe (11th gen and newer) has no macOS graphics driver at all.
+- It does not support Sandy Bridge (2nd Gen) or Ivy Bridge (3rd Gend). Intel Xe (11th gen and newer) has no macOS graphics driver at all – try [WhateverXe](https://github.com/b00t0x/WhateverXe) kext instead.
 - It does not touch BIOS settings. Follow the manual's firmware requirements (for example DVMT pre-allocation).
 
 Single file, Python 3.8+, no external dependencies. Works on macOS, Linux and Windows.
