@@ -74,9 +74,77 @@ The easiest way is from Linux (a live USB is enough), as root (&rarr; [**Detaile
 sudo cat /sys/kernel/debug/dri/0/i915_vbt > vbt.bin
 ```
 
-The path can differ if you have more than one GPU (`dri/1`, and so on). Alternatively, extract the VBT from a dump of your BIOS image with a firmware tool such as UEFITool.
+The path can differ if you have more than one GPU (`dri/1`, and so on). Dumping the VBT this way needs Linux, so make the dump there and copy `vbt.bin` to your Mac or Windows machine if you work on those. Alternatively, extract the VBT from a dump of your BIOS image with a firmware tool such as UEFITool.
 
-### 2. Find your device-id
+### 2. Run the tool
+
+The tool needs the device-id of your iGPU. How you provide it depends on your system.
+
+#### Linux and Windows: detect the device-id automatically
+
+If the VBT comes from the computer you are running the script on, add `--detect-device-id`. The tool reads the id from the system and prints where it came from. `-d` always takes priority over the detected id.
+
+**Linux** (reads sysfs, no root needed):
+
+```bash
+# basic run, target macOS 14
+python3 vbt2fbpatch.py -i vbt.bin --detect-device-id -t 14.0
+
+# laptop: also add the backlight register fix
+python3 vbt2fbpatch.py -i vbt.bin --detect-device-id -t 15.0 --backlight-fix
+
+# laptop: at most 3 connectors, save the XML snippet to a file
+python3 vbt2fbpatch.py -i vbt.bin --detect-device-id -t 14.0 --mobile -o patch.xml
+
+# merge straight into a config.plist (a .bak copy is written first)
+python3 vbt2fbpatch.py -i vbt.bin --detect-device-id -t 14.0 -m /path/to/config.plist
+```
+
+**Windows** (PowerShell; the tool asks PowerShell for the video controller's hardware id). `py` is the Python launcher, use `python` if you don't have it:
+
+```powershell
+# basic run, target macOS 14
+py vbt2fbpatch.py -i vbt.bin --detect-device-id -t 14.0
+
+# laptop: also add the backlight register fix
+py vbt2fbpatch.py -i vbt.bin --detect-device-id -t 15.0 --backlight-fix
+
+# laptop: at most 3 connectors, save the XML snippet to a file
+py vbt2fbpatch.py -i vbt.bin --detect-device-id -t 14.0 --mobile -o patch.xml
+
+# merge straight into a config.plist (a .bak copy is written first)
+py vbt2fbpatch.py -i vbt.bin --detect-device-id -t 14.0 -m C:\path\to\config.plist
+```
+
+Two cautions:
+
+- The detected id is only right if the VBT is from this same machine. If you analyze someone else's VBT, use manual mode below.
+- The Windows lookup is tested only against sample output so far, not on a real machine. If detection finds no Intel graphics, the tool says so and you can pass `-d` instead.
+
+#### macOS: manual mode
+
+Automatic detection is **not available on macOS**. macOS reports the device-id that your `config.plist` injects. If you already spoof the id, the tool would see the spoofed value, treat the iGPU as native and generate a patch without the spoof. Pass the **real** id with `-d` instead (see "Finding the device-id" below):
+
+```bash
+# basic run, target macOS 15
+python3 vbt2fbpatch.py -i vbt.bin -d 3EA0 -t 15.0
+
+# laptop: also add the backlight register fix
+python3 vbt2fbpatch.py -i vbt.bin -d 3EA0 -t 15.0 --backlight-fix
+
+# laptop: at most 3 connectors, save the XML snippet to a file
+python3 vbt2fbpatch.py -i vbt.bin -d 3EA0 -t 15.0 --mobile -o ~/Desktop/patch.xml
+
+# merge straight into a config.plist, for example on a mounted EFI partition
+# (a .bak copy is written first)
+python3 vbt2fbpatch.py -i vbt.bin -d 3EA0 -t 15.0 -m /Volumes/EFI/EFI/OC/config.plist
+```
+
+The VBT dump itself needs Linux (see step 1). Create `vbt.bin` there and copy it to your Mac.
+
+Manual mode works the same way on Linux and Windows, so use `-d` there whenever the VBT is not from the machine you run the tool on.
+
+#### Finding the device-id (manual mode)
 
 **Intel ARK:** look up your CPU on [ark.intel.com](https://ark.intel.com). The *Processor Graphics* section lists the iGPU's device ID, for example `0x3E9B`. Some CPUs list more than one ID. If yours does, confirm the right one with one of the methods below.
 
@@ -95,19 +163,9 @@ The device-id is the second half of the `[8086:xxxx]` pair, for example `3E9B`.
 3. Open the **Details** tab and pick **Hardware Ids** in the *Property* dropdown.
 4. Read the value after `DEV_` in the first line, for example `PCI\VEN_8086&DEV_3E9B&...` means `3E9B`.
 
-### 3. Run the tool
+### 3. Add the patch to your config.plist
 
-```bash
-python3 vbt2fbpatch.py -i vbt.bin -d 3E9B -t 14.0
-```
-
-The output contains a summary (status, spoof, platform-id), a connector table and the XML snippet. Copy the snippet into `DeviceProperties > Add` of your `config.plist`, or let the tool do it:
-
-```bash
-python3 vbt2fbpatch.py -i vbt.bin -d 3E9B -t 14.0 -m /path/to/config.plist
-```
-
-`--merge` keeps your existing keys and writes a `config.plist.bak` backup first. Plist comments are not preserved.
+The output contains a summary (status, spoof, platform-id), a table of the display devices in the VBT, a connector table and the XML snippet. Copy the snippet into `DeviceProperties > Add` of your `config.plist`, or use `-m` as in the examples above. `--merge` keeps your existing keys and writes a `config.plist.bak` backup first. Plist comments are not preserved.
 
 ### Options
 
@@ -115,6 +173,7 @@ python3 vbt2fbpatch.py -i vbt.bin -d 3E9B -t 14.0 -m /path/to/config.plist
 |---|---|
 | `-i`, `--input` | VBT dump or option ROM (required) |
 | `-d`, `--device-id` | iGPU device-id in hex, e.g. `3E9B` (read from the file if it contains a PCIR header) |
+| `--detect-device-id` | Read the iGPU device-id from this machine (Linux, Windows) when `-d` is not given. Only correct if the VBT comes from this same machine. Refused on macOS |
 | `-t`, `--target-macos` | Target macOS version, default `14.0` |
 | `-f`, `--form-factor` | `desktop`, `mobile` or `headless`. Default: mobile if the VBT has an internal panel, otherwise desktop |
 | `-p`, `--platform-id` | Override the platform-id, written as in the manual's framebuffer lists, e.g. `3E9B0007` |
@@ -178,7 +237,7 @@ This project was written entirely with AI. The first version came from Google AI
 ## Credits
 
 - [WhateverGreen](https://github.com/acidanthera/WhateverGreen) and the Acidanthera team for the Intel HD manual this tool is built on
-- The Linux i915 driver and igt-gpu-tools (Intel Corporation, MIT) for the public VBT format definitions
+- The Linux i915 driver and igt-gpu-tools' `intel_vbt_decode.c` (Intel Corporation, MIT) for the public VBT format definitions, used to cross-check this tool's decoder
 
 ## License
 

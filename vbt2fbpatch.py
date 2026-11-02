@@ -30,12 +30,14 @@ Attribution
   The VBT/BDB structure definitions, device-type bits and DVO/DDI/AUX mappings follow the
   Linux i915 driver (drivers/gpu/drm/i915/display/intel_vbt_defs.h and intel_bios.c,
   Copyright (c) Intel Corporation, MIT license). The same format is decoded by
-  igt-gpu-tools' tools/intel_vbt_decode.c (Copyright (c) Intel Corporation, MIT license),
-  a good reference decoder to compare against. No code was copied from either project.
+  igt-gpu-tools' tools/intel_vbt_decode.c (Copyright (c) 2006 Intel Corporation, author Eric
+  Anholt, MIT license). Handle names, BDB-version gates (AUX 155, LSPCON 192, Type-C 195,
+  HPD invert 196, Thunderbolt 209) and the AUX channel mapping were cross-checked against it.
+  No code was copied from either project.
 
 License: MIT
 
-Copyright (c) 2026 vbt2fbpatch contributors
+Copyright (c) 2026 5T33Z0
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this
 software and associated documentation files (the "Software"), to deal in the Software
@@ -59,14 +61,16 @@ import base64
 import json
 import os
 import plistlib
+import re
 import shutil
 import struct
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Tuple, Union
 
-__version__ = "3.2.0"
+__version__ = "3.3.1"
 PROG_NAME = "vbt2fbpatch"
 FAQ_URL = "https://github.com/acidanthera/WhateverGreen/blob/master/Manual/FAQ.IntelHD.en.md"
 IGPU_PCI_PATH = "PciRoot(0x0)/Pci(0x2,0x0)"
@@ -640,7 +644,9 @@ BDB_HEADER_MIN_SIZE = 22
 BDB_GENERAL_DEFINITIONS = 2
 BDB_MIPI_SEQUENCE = 53                    # v3+ blocks carry a 32-bit size
 GENERAL_DEFINITIONS_HEADER_SIZE = 5
-LEGACY_CHILD_DEVICE_CONFIG_SIZE = 33      # smallest child_device_config i915 accepts
+LEGACY_CHILD_DEVICE_CONFIG_SIZE = 33      # i915 rejects smaller entries
+MIN_CHILD_DEVICE_SIZE = 22                # oldest layout (BDB < 106); igt decodes any non-zero size
+CHILD_PAD_SIZE = 44                       # largest layout; shorter entries are zero-padded like igt does
 
 # child_device_config field offsets (computed from the i915 struct with gcc)
 CHILD_OFF_HANDLE = 0
@@ -649,11 +655,11 @@ CHILD_OFF_DVO_PORT = 16
 CHILD_OFF_I2C_PIN = 17
 CHILD_OFF_DDC_PIN = 19
 CHILD_OFF_FLAGS = 23                      # bit 4 = hpd_invert (BDB 196+)
-CHILD_OFF_AUX_CHANNEL = 25                # valid from BDB 158; older VBTs hold dvo2 data here
+CHILD_OFF_AUX_CHANNEL = 25                # valid from BDB 155; older VBTs hold dvo2 data here
 CHILD_OFF_CAPS = 27                       # bits 3-4 = hpd_status
 CHILD_OFF_TYPEC = 33                      # bit 0 = dp_usb_type_c (195+), bit 1 = tbt (209+)
 
-BDB_VER_AUX_CHANNEL = 158
+BDB_VER_AUX_CHANNEL = 155
 BDB_VER_TYPEC = 195
 BDB_VER_HPD_INVERT = 196
 BDB_VER_TBT = 209
@@ -713,19 +719,28 @@ def expected_child_size(bdb_version: int) -> Optional[int]:
     return 22
 
 
+# (handle bit, name, first BDB version, last BDB version) - same table as igt's decoder
+_HANDLES = (
+    (0x0001, "CRT", 0, 216), (0x0002, "TV", 0, 214),
+    (0x0004, "EFP1", 0, 0), (0x0040, "EFP2", 0, 0), (0x0020, "EFP3", 0, 0), (0x0010, "EFP4", 0, 0),
+    (0x0002, "EFP5", 215, 0), (0x0001, "EFP6", 217, 0), (0x0100, "EFP7", 217, 0), (0x0200, "EFP8", 217, 0),
+    (0x0008, "LFP1", 0, 0), (0x0080, "LFP2", 0, 0),
+)
+
+
 def handle_name(handle: int, bdb_version: int) -> str:
-    """Device handle -> LFP1/LFP2/EFP1... (some values were reused by newer BDB versions)."""
-    fixed = {0x0008: "LFP1", 0x0080: "LFP2", 0x0004: "EFP1", 0x0040: "EFP2",
-             0x0020: "EFP3", 0x0010: "EFP4"}
-    if handle in fixed:
-        return fixed[handle]
-    if handle == 0x0002:
-        return "EFP5" if bdb_version >= 215 else "TV"
-    if handle == 0x0001:
-        return "EFP6" if bdb_version >= 217 else "CRT"
-    if handle in (0x0100, 0x0200) and bdb_version >= 217:
-        return "EFP7" if handle == 0x0100 else "EFP8"
-    return f"0x{handle:04X}"
+    """Device handle -> LFP1/EFP1/... Several bits can be set; some bits were renamed by newer BDB versions."""
+    if handle == 0:
+        return "none"
+    names, rest = [], handle
+    for bit, name, first, last in _HANDLES:
+        if not handle & bit or (first and bdb_version < first) or (last and bdb_version > last):
+            continue
+        names.append(name)
+        rest &= ~bit
+    if rest:
+        names.append(f"unknown(0x{rest:X})")
+    return ",".join(names)
 
 
 def classify_device_type(device_type: int) -> str:
@@ -923,9 +938,12 @@ class VBTParser:
         if len(defs) < GENERAL_DEFINITIONS_HEADER_SIZE:
             raise ValueError("General Definitions block is too small")
         child_size = defs[4]
-        if child_size < LEGACY_CHILD_DEVICE_CONFIG_SIZE:
+        if child_size < MIN_CHILD_DEVICE_SIZE:
             raise ValueError(f"child device size {child_size} is smaller than the minimum "
-                             f"{LEGACY_CHILD_DEVICE_CONFIG_SIZE}")
+                             f"{MIN_CHILD_DEVICE_SIZE}")
+        if child_size < LEGACY_CHILD_DEVICE_CONFIG_SIZE:
+            self.notes.append(f"child device size {child_size} is below {LEGACY_CHILD_DEVICE_CONFIG_SIZE}; "
+                              f"i915 would reject this VBT, igt decodes it, so entries are zero-padded.")
         self.child_size = child_size
         expected = expected_child_size(self.bdb_version)
         if expected is not None and expected != child_size:
@@ -934,7 +952,7 @@ class VBTParser:
         count = (len(defs) - GENERAL_DEFINITIONS_HEADER_SIZE) // child_size
         for slot in range(count):
             start = GENERAL_DEFINITIONS_HEADER_SIZE + slot * child_size
-            chunk = defs[start:start + child_size]
+            chunk = defs[start:start + child_size].ljust(CHILD_PAD_SIZE, b"\0")
             device_type = struct.unpack_from("<H", chunk, CHILD_OFF_DEVICE_TYPE)[0]
             if device_type in (0x0000, 0xFFFF):          # empty slot
                 continue
@@ -1265,6 +1283,69 @@ def render_connector_table(patches: List[ConnectorPatch]) -> str:
 
 
 # ==============================================================================
+# Device-id detection on the machine running the script (opt-in: --detect-device-id)
+# ==============================================================================
+
+INTEL_VENDOR_ID = 0x8086
+PCI_CLASS_DISPLAY = 0x03
+
+
+def _read_hex_file(path: str) -> Optional[int]:
+    try:
+        with open(path, "r", encoding="ascii") as f:
+            return int(f.read().strip(), 16)
+    except (OSError, ValueError):
+        return None
+
+
+def _run_command(cmd: List[str]) -> str:
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=30).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def _detect_linux(sysfs_root: str = "/sys/bus/pci/devices") -> Optional[Tuple[int, str]]:
+    """Intel display controller from sysfs; the integrated GPU sits at 00:02.0."""
+    try:
+        names = sorted(os.listdir(sysfs_root))
+    except OSError:
+        return None
+    found: List[Tuple[str, int]] = []
+    for name in names:
+        base = os.path.join(sysfs_root, name)
+        vendor, device, pci_class = (_read_hex_file(os.path.join(base, key)) for key in ("vendor", "device", "class"))
+        if (vendor == INTEL_VENDOR_ID and device is not None and pci_class is not None
+                and (pci_class >> 16) == PCI_CLASS_DISPLAY):
+            found.append((name, device))
+    if not found:
+        return None
+    name, device = next(((n, d) for n, d in found if n.endswith(":00:02.0")), found[0])
+    return device, f"PCI device {name}, sysfs"
+
+
+def _parse_windows_pnp_ids(text: str) -> Optional[int]:
+    """PNP device ids look like PCI\\VEN_8086&DEV_3EA0&SUBSYS_...; take the first Intel one."""
+    match = re.search(r"VEN_8086&DEV_([0-9A-Fa-f]{4})", text)
+    return int(match.group(1), 16) if match else None
+
+
+def detect_igpu_device_id() -> Optional[Tuple[int, str]]:
+    """
+    Device-id of this machine's Intel graphics as (id, description of the source), or None.
+    Not available on macOS: macOS reports the device-id that config.plist injects, so a machine
+    that already spoofs its id would be detected with the spoofed value and get a wrong patch.
+    """
+    if sys.platform.startswith("linux"):
+        return _detect_linux()
+    if sys.platform == "win32":
+        ps = "Get-CimInstance Win32_VideoController | ForEach-Object { $_.PNPDeviceID }"
+        found = _parse_windows_pnp_ids(_run_command(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps]))
+        return (found, "Windows video controller") if found is not None else None
+    return None
+
+
+# ==============================================================================
 # CLI
 # ==============================================================================
 
@@ -1276,6 +1357,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("-i", "--input", required=True, help="VBT dump or option ROM containing a VBT")
     p.add_argument("-d", "--device-id", help="iGPU PCI device-id (hex, e.g. 3E9B). Read from a PCIR header if present.")
+    p.add_argument("--detect-device-id", action="store_true",
+                   help="read the iGPU device-id from this machine (Linux, Windows) if -d is not given and the file "
+                        "has none. Only correct if the VBT comes from this same machine. Not available on macOS.")
     p.add_argument("-p", "--platform-id",
                    help="AAPL,ig-platform-id in the notation of the FAQ framebuffer lists "
                         "(e.g. 3E9B0007). Overrides the automatic choice.")
@@ -1339,13 +1423,29 @@ def main(argv: Optional[List[str]] = None) -> int:
         form_factor = FormFactor.MOBILE if has_panel else FormFactor.DESKTOP
 
     pcir = vbt.detected_pcir_device_id
+    id_source = "argument"
+    detect_note: Optional[str] = None
     try:
         if args.device_id:
             device_id = parse_device_id(args.device_id)
         elif pcir is not None:
-            device_id = pcir
+            device_id, id_source = pcir, "pcir"
+        elif args.detect_device_id:
+            if sys.platform == "darwin":
+                return _fail("--detect-device-id is not available on macOS: macOS reports the device-id that "
+                             "your config.plist injects, so an id you already spoof would produce a wrong patch. "
+                             "Pass the real id with -d (from Intel ARK, or from Linux or Windows).", 2)
+            detected = detect_igpu_device_id()
+            if detected is None:
+                return _fail("could not find an Intel graphics device on this system; pass the id with -d.", 2)
+            device_id, source = detected
+            id_source = "system"
+            detect_note = (f"Device-ID 0x{device_id:04X} was read from this machine ({source}). "
+                           f"This assumes the VBT comes from the same machine; use -d to override.")
         else:
-            return _fail("no device-id found in the file; pass it with -d (e.g. -d 3E9B).", 2)
+            hint = ("pass it with -d (e.g. -d 3E9B)" if sys.platform == "darwin" else
+                    "pass it with -d (e.g. -d 3E9B), or use --detect-device-id when the VBT comes from this machine")
+            return _fail(f"no device-id found in the file; {hint}.", 2)
 
         if args.platform_id:
             pid = parse_platform_id(args.platform_id)
@@ -1373,7 +1473,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     lspcon_notes = [f"VBT marks slot {c.source.slot} ({c.source.kind}, DDI {c.source.ddi}) as LSPCON: adding "
                     f"framebuffer-con{c.index}-has-lspcon and enable-lspcon-support. The FAQ says the driver is only "
                     f"needed when HDMI 2.0 is routed to the iGPU." for c in connectors if c.lspcon]
-    all_warnings = vbt.warnings + res.warnings + conn_warnings + backlight_warnings + lspcon_notes
+    all_warnings = ([detect_note] if detect_note else []) + vbt.warnings + res.warnings + conn_warnings \
+        + backlight_warnings + lspcon_notes
 
     props: Optional[Dict[str, bytes]] = None
     exit_code = 0
@@ -1400,7 +1501,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                        "ddc_pin": d.ddc_pin, "i2c_pin": d.i2c_pin, "hpd_status": d.hpd_status,
                        "hpd_invert": d.hpd_invert, "usb_type_c": d.usb_type_c, "tbt": d.tbt}
                       for d in vbt.child_devices],
-            "device_id": f"0x{res.device_id_str}", "status": res.status.value, "reason": res.reason,
+            "device_id": f"0x{res.device_id_str}", "device_id_source": id_source, "status": res.status.value, "reason": res.reason,
             "form_factor": res.form_factor.value,
             "spoof_device_id": f"0x{res.spoof_target:04X}" if res.spoof_target is not None else None,
             "platform_id": f"{res.platform_id:08X}" if res.platform_id is not None else None,

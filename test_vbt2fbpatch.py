@@ -15,6 +15,7 @@ import plistlib
 import struct
 import tempfile
 import unittest
+from unittest import mock
 
 import vbt2fbpatch as v
 from vbt2fbpatch import CompatibilityStatus as S, FormFactor as FF
@@ -23,12 +24,10 @@ from vbt2fbpatch import CompatibilityStatus as S, FormFactor as FF
 # ---------------------------------------------------------------- VBT builder
 
 def child(device_type, dvo_port, aux=0, ddc=0, size=40, handle=0, flags=0, caps=0, typec=0):
-    c = bytearray(size)
+    c = bytearray(max(size, 44))
     struct.pack_into("<HH", c, 0, handle, device_type)
-    c[16], c[19], c[23], c[25], c[27] = dvo_port, ddc, flags, aux, caps
-    if size > 33:
-        c[33] = typec
-    return bytes(c)
+    c[16], c[19], c[23], c[25], c[27], c[33] = dvo_port, ddc, flags, aux, caps, typec
+    return bytes(c[:size])
 
 
 def build_vbt(children, child_size=40, bdb_version=230, lfp_block=True, with_general_defs=True):
@@ -319,20 +318,36 @@ class Spec(unittest.TestCase):
         self.assertEqual(v.handle_name(0x0002, 215), "EFP5")
         self.assertEqual(v.handle_name(0x0001, 155), "CRT")
         self.assertEqual(v.handle_name(0x0001, 217), "EFP6")
+        self.assertEqual(v.handle_name(0x0001, 216), "CRT")
+        self.assertEqual(v.handle_name(0x0002, 214), "TV")
+        self.assertEqual(v.handle_name(0, 230), "none")
+        self.assertEqual(v.handle_name(0x0008 | 0x0080, 230), "LFP1,LFP2")     # several bits, like igt
+        self.assertIn("unknown", v.handle_name(0x0400, 230))
 
     def test_fields_are_gated_by_bdb_version(self):
         kids = [child(0x78C6, 10, aux=0x40, handle=0x0008, flags=0x10, typec=0x03)]
         new = v.VBTParser(build_vbt(kids, bdb_version=230)).child_devices[0]
         self.assertEqual((new.handle_label, new.aux_ddi, new.hpd_invert, new.usb_type_c, new.tbt),
                          ("LFP1", "A", True, True, True))
-        old = v.VBTParser(build_vbt(kids, child_size=33, bdb_version=155)).child_devices[0]
+        old = v.VBTParser(build_vbt(kids, child_size=33, bdb_version=154)).child_devices[0]
         self.assertFalse(old.aux_valid)
-        self.assertIsNone(old.aux_ddi)          # before BDB 158 these bytes hold dvo2 data
+        self.assertIsNone(old.aux_ddi)          # before BDB 155 these bytes hold dvo2 data
+        haswell = v.VBTParser(build_vbt(kids, child_size=33, bdb_version=155)).child_devices[0]
+        self.assertEqual(haswell.aux_ddi, "A")  # igt reads the AUX channel from BDB 155
         self.assertIsNone(old.hpd_invert)       # 196+
         self.assertIsNone(old.usb_type_c)       # 195+
         mid = v.VBTParser(build_vbt(kids, bdb_version=200)).child_devices[0]
         self.assertTrue(mid.usb_type_c)
         self.assertIsNone(mid.tbt)              # 209+
+
+    def test_small_child_entries_are_zero_padded_like_igt(self):
+        small = child(0x68C6, 7, size=27)
+        p = v.VBTParser(build_vbt([small], child_size=27, bdb_version=110))
+        self.assertEqual(p.child_devices[0].kind, "DP")
+        self.assertEqual(p.child_devices[0].ddi, "B")
+        self.assertTrue(any("i915 would reject" in n for n in p.notes))
+        with self.assertRaises(ValueError):
+            v.VBTParser(build_vbt([child(0x68C6, 7, size=20)], child_size=20, bdb_version=100))
 
     def test_expected_child_sizes_follow_i915(self):
         sizes = {110: 27, 111: 33, 194: 33, 195: 37, 196: 38, 215: 38, 216: 39, 255: 39, 256: 40, 263: 44}
@@ -448,6 +463,83 @@ class CommunityAndLspcon(unittest.TestCase):
             self.assertEqual(props["framebuffer-con1-pipe"]["hex"], "12000000")
             self.assertEqual(props["framebuffer-con1-preferred-lspcon-mode"]["hex"], "01000000")
             self.assertTrue(any("LSPCON" in w for w in data["warnings"]))
+
+
+class DetectDeviceId(unittest.TestCase):
+    def make_pci(self, root, name, vendor, device, pci_class):
+        d = os.path.join(root, name)
+        os.makedirs(d)
+        for key, value in (("vendor", vendor), ("device", device), ("class", pci_class)):
+            with open(os.path.join(d, key), "w") as f:
+                f.write(value + "\n")
+
+    def test_linux_sysfs_picks_the_intel_display_controller(self):
+        with tempfile.TemporaryDirectory() as root:
+            self.make_pci(root, "0000:00:00.0", "0x8086", "0x3ec4", "0x060000")     # host bridge, not a display
+            self.make_pci(root, "0000:01:00.0", "0x10de", "0x1c8d", "0x030200")     # NVIDIA dGPU
+            self.make_pci(root, "0000:00:02.0", "0x8086", "0x3ea0", "0x030000")     # iGPU
+            found = v._detect_linux(root)
+            self.assertEqual(found[0], 0x3EA0)
+            self.assertIn("0000:00:02.0", found[1])
+
+    def test_linux_sysfs_without_intel_graphics(self):
+        with tempfile.TemporaryDirectory() as root:
+            self.make_pci(root, "0000:00:00.0", "0x8086", "0x0d57", "0x060000")
+            self.make_pci(root, "0000:01:00.0", "0x10de", "0x1c8d", "0x030200")
+            self.assertIsNone(v._detect_linux(root))
+        self.assertIsNone(v._detect_linux("/nonexistent/sysfs"))
+
+    def test_windows_pnp_ids(self):
+        text = "PCI\\VEN_10DE&DEV_1C8D&SUBSYS_12345678&REV_A1\\4&1&0&0008\r\nPCI\\VEN_8086&DEV_3EA0&SUBSYS_87654321&REV_02\\3&11583659&0&10\r\n"
+        self.assertEqual(v._parse_windows_pnp_ids(text), 0x3EA0)
+        self.assertIsNone(v._parse_windows_pnp_ids("PCI\\VEN_10DE&DEV_1C8D&SUBSYS_1\r\n"))
+
+    def run_cli(self, *args):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = v.main(list(args))
+        return code, out.getvalue()
+
+    def test_cli_uses_detection_only_when_asked(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "vbt.bin")
+            with open(path, "wb") as f:
+                f.write(build_vbt([EDP, DP_B, HDMI_D]))
+            with mock.patch.object(v, "detect_igpu_device_id", return_value=(0x3EA0, "test")) as detect:
+                code, _ = self.run_cli("-i", path, "--json")
+                self.assertEqual(code, 2)                      # not asked: still an error
+                detect.assert_not_called()
+                code, out = self.run_cli("-i", path, "--detect-device-id", "--json")
+                data = json.loads(out)
+                self.assertEqual(code, 0)
+                self.assertEqual((data["device_id"], data["device_id_source"]), ("0x3EA0", "system"))
+                self.assertEqual(data["status"], "NEEDS_SPOOF")
+                self.assertTrue(any("read from this machine" in w for w in data["warnings"]))
+                detect.reset_mock()
+                code, out = self.run_cli("-i", path, "-d", "9BC8", "--detect-device-id", "--json")
+                data = json.loads(out)
+                self.assertEqual((data["device_id"], data["device_id_source"]), ("0x9BC8", "argument"))
+                detect.assert_not_called()                     # -d wins
+            with mock.patch.object(v, "detect_igpu_device_id", return_value=None):
+                self.assertEqual(self.run_cli("-i", path, "--detect-device-id")[0], 2)
+
+    def test_detection_is_refused_on_macos(self):
+        # macOS shows the id that config.plist injects, so detecting would drop an existing spoof
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "vbt.bin")
+            with open(path, "wb") as f:
+                f.write(build_vbt([EDP, DP_B, HDMI_D]))
+            with mock.patch.object(v.sys, "platform", "darwin"), \
+                    mock.patch.object(v, "detect_igpu_device_id", return_value=(0x3EA5, "x")) as detect:
+                err = io.StringIO()
+                with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(v.main(["-i", path, "--detect-device-id"]), 2)
+                    self.assertIn("not available on macOS", err.getvalue())
+                    detect.assert_not_called()
+                    err.truncate(0)
+                    self.assertEqual(v.main(["-i", path]), 2)
+                    self.assertNotIn("--detect-device-id", err.getvalue())      # no hint to a flag that is refused
+                    self.assertEqual(v.main(["-i", path, "-d", "3EA0", "--json"]), 0)    # -d still works
 
 
 class CLI(unittest.TestCase):
