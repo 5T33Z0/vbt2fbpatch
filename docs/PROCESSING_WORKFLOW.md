@@ -219,13 +219,14 @@ The following legend covers the abbreviations and technical terms used in the `v
 | BDB Block    | BIOS Data Block entry               | Individual data section inside the BDB.                                    |
 | iGPU         | Integrated Graphics Processing Unit | Graphics processor integrated into the CPU.                                |
 | dGPU         | Discrete Graphics Processing Unit   | Separate graphics card or GPU.                                             |
+| ROM          | Read-Only Memory                     | Firmware image; an option ROM may contain the VBT and a PCIR data structure. |
 
 ### Display interfaces and connectors
 
 | Abbreviation | Meaning                              | Description                                                                      |
 | ------------ | ------------------------------------ | -------------------------------------------------------------------------------- |
 | DDI          | Digital Display Interface            | Intel display output interface, e.g. DDI B, C or D.                              |
-| DVO          | Digital Video Output                 | Interface identifier used in VBT connector information.                          |
+| DVO          | Digital Video Output                 | VBT port identifier that the script maps to the corresponding DDI.               |
 | DP           | DisplayPort                          | Digital display interface.                                                       |
 | DP++         | DisplayPort Dual-Mode                | DisplayPort output that can also provide HDMI/DVI signals through an adapter.    |
 | HDMI         | High-Definition Multimedia Interface | Digital audio/video interface.                                                   |
@@ -234,6 +235,10 @@ The following legend covers the abbreviations and technical terms used in the `v
 | LVDS         | Low-Voltage Differential Signaling   | Older internal display interface used by laptop panels.                          |
 | DDC          | Display Data Channel                 | Communication channel used to read monitor information, typically via I²C.       |
 | GMBUS        | Graphics Management Bus              | Intel's I²C-based bus controller used for display communication.                 |
+| I²C          | Inter-Integrated Circuit             | Serial bus protocol used for low-speed communication with display devices.        |
+| AUX          | Auxiliary Channel                    | DisplayPort communication channel used for link management and display data.     |
+| HPD          | Hot-Plug Detect                      | Signal indicating that a display or display connection is present.                |
+| LSPCON       | Level Shifter / Protocol Converter   | Device that converts DisplayPort signals to HDMI-compatible output.               |
 | Pipe         | Display Pipe                         | Intel display pipeline that processes image data before sending it to an output. |
 
 ### Connector mapping and OpenCore
@@ -256,6 +261,8 @@ The following legend covers the abbreviations and technical terms used in the `v
 | CLI                 | Command-Line Interface     | Text-based interface used to execute the script and specify options.                     |
 | JSON                | JavaScript Object Notation | Text-based format used for structured data.                                              |
 | plist               | Property List              | Apple's structured configuration format, used by OpenCore's `config.plist`.              |
+| XML                 | Extensible Markup Language | Text-based markup format used for the generated OpenCore property snippet.                |
+| PCIR                | PCI Expansion ROM Structure | Data structure in an option ROM that contains PCI device information, including Device-ID. |
 | Hex                 | Hexadecimal                | Base-16 number representation, commonly used for IDs and hardware values.                |
 | Mapping             | Mapping                    | Associating detected VBT values with the corresponding framebuffer or OpenCore values.   |
 | Patch               | Configuration Modification | A property or set of properties applied to modify the default framebuffer configuration. |
@@ -263,12 +270,12 @@ The following legend covers the abbreviations and technical terms used in the `v
 ### Important distinctions
 
 - VBIOS vs. VBT: The VBIOS is the graphics firmware; the VBT is a data structure contained within it.
-- DDI vs. DVO: DDI refers to Intel's display interface; DVO is the port identifier found in the VBT data that the script uses to determine the corresponding DDI.
+- DDI vs. DVO: DDI is the Intel display interface identifier (for example, DDI B or DDI C). DVO is the port identifier read from the VBT; the script maps that value to a DDI.
+- DDC vs. AUX: DDC is used for display data communication over I²C. AUX is the separate DisplayPort auxiliary channel; the two are not interchangeable.
 - Connector Index vs. Bus-ID: The connector index identifies the OpenCore property set (`con1`, `con2`, etc.). The Bus-ID identifies the display bus assigned to that connector. They are not interchangeable.
 - Platform-ID vs. Device-ID: The Device-ID identifies the GPU hardware; the Platform-ID selects the framebuffer configuration used by macOS.
 - DP vs. DP++: DP is a native DisplayPort connection. DP++ supports dual-mode signaling and can also carry HDMI/DVI through a suitable adapter.
 
-This should work as a standalone `## Legend` section in the repository's Markdown documentation.
 
 ## Reference implementation
 
