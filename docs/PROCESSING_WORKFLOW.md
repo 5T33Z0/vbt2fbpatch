@@ -50,6 +50,38 @@ flowchart TD
     N -->|Unsupported iGPU or no platform-id| X2[Report error; do not generate patch]
 ```
 
+### VBT to ConnectorPatch Conversion in Detail
+
+```mermaid
+flowchart TD
+    A[VBT Child Device] --> B[Read dvo_port]
+    B --> C[DVO_PORT_TO_DDI lookup]
+    C --> D{DDI identified?}
+    D -- No --> X[No verified bus-ID]
+    D -- Yes --> E[DDI letter]
+    E --> F[EXTERNAL_BUS_ID_BY_DDI lookup]
+    F --> G{Mapping exists?}
+    G -- No --> X
+    G -- Yes --> H[DDI-derived bus-ID]
+
+    A --> I{Internal panel?}
+    I -- Yes --> J[Assign bus-ID 0x00]
+    I -- No --> K{Eligible DDC connector?}
+    K -- No --> F
+    K -- Yes --> L{--bus-id-source ddc?}
+    L -- Yes --> M{DDC pin 4, 5 or 6?}
+    M -- Yes --> N[Use DDC pin directly]
+    M -- No --> F
+    L -- No --> F
+    F --> O[Compare DDC pin and DDI mapping]
+    O --> P[Use DDI-derived bus-ID]
+    H --> Q[Check for duplicate bus-ID]
+    N --> Q
+    P --> Q
+    J --> Q
+    Q --> R[Create ConnectorPatch]
+```
+
 ## Stages
 
 ### 1. Input and VBT parsing
