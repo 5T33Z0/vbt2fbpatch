@@ -2,6 +2,35 @@
 
 All notable changes to vbt2fbpatch are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.3.1] - 2026-11-02
+
+### Fixed
+- `--detect-device-id` is refused on macOS. macOS reports the device-id that `config.plist` injects, so on a machine that already spoofs its id the tool saw the spoofed value, treated the iGPU as native and generated a patch without the spoof. The error tells you to pass the real id with `-d`. The missing-id error on macOS no longer suggests the flag.
+
+### Removed
+- The macOS `ioreg` parser.
+
+## [3.3.0] - 2026-11-02
+
+### Added
+- `--detect-device-id`: reads the iGPU device-id from the machine running the script when `-d` is not given and the file has no PCIR header. Linux reads sysfs, Windows reads the video controller's PNP id through PowerShell, and macOS parses `ioreg`. The output names the source and warns that this assumes the VBT comes from the same machine (and, on macOS, that an injected spoof shows up as the spoofed id). `-d` and a PCIR header still take priority.
+- `device_id_source` (`argument`, `pcir` or `system`) in the JSON output.
+- Tests for the detection with a fake sysfs tree and sample Windows and macOS output.
+
+### Changed
+- The error for a missing device-id now points to `--detect-device-id`.
+
+## [3.2.1] - 2026-11-02
+
+Fixes found by cross-checking the decoder against igt-gpu-tools' `intel_vbt_decode.c`. The handle names and the BDB-version gates for LSPCON (192), Type-C (195), hot-plug invert (196) and Thunderbolt (209) already agreed with it.
+
+### Fixed
+- AUX channel decoding starts at BDB 155, as in igt. It started at 158 in 3.1.0 and 3.2.0, which hid the AUX channel on VBTs with BDB 155 to 157 (Haswell era).
+- Device handles with several bits set show all names (`LFP1,LFP2`) instead of the raw value.
+
+### Changed
+- Child entries smaller than 33 bytes (old BDB versions) are decoded with zero padding, as igt does, instead of being rejected. A note is shown with `--verbose`. Entries below 22 bytes are still rejected.
+
 ## [3.2.0] - 2026-11-01
 
 ### Added
@@ -29,6 +58,7 @@ All notable changes to vbt2fbpatch are documented here. The format is based on [
 ### Changed
 - At most four connectors (`con0` to `con3`) are patched. The internal panel (LFP1 first) is kept before external ports, and dropped ports are listed in a warning.
 - Connector numbering: with an internal panel it is `con0` and the external ports follow. Without a panel the external ports start at `con1`, as in the FAQ's desktop framebuffers.
+- License changed from Apache-2.0 to MIT, with attribution to the Linux i915 driver and igt-gpu-tools.
 - The VBT header version is shown in decimal.
 - "BDB block runs past the end of the BDB" is now a note (`--verbose`) and no longer a warning.
 
