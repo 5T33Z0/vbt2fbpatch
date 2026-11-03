@@ -2,19 +2,13 @@
 
 Generate OpenCore framebuffer patches for Intel iGPUs from your machine's own firmware data.
 
-<img width="1217" height="976" alt="vbt2fbpatch_main" src="https://github.com/user-attachments/assets/3488ce80-1a6e-4329-9201-7f9775f53c3d" />
-
-`vbt2fbpatch` reads the display connector table from a dumped Intel Video BIOS Table (VBT), checks your iGPU against the [WhateverGreen Intel HD manual](https://github.com/acidanthera/WhateverGreen/blob/master/Manual/FAQ.IntelHD.en.md), and prints a ready-to-use `DeviceProperties` snippet for your `config.plist`.
-
-> [!NOTE]
-> 
-> Treat this as a proof of concept. The original web app, built in Google AI Studio, has a GUI with more manual settings, but I haven't managed to turn it into a native macOS app yet.
->
-> The command-line tool is tested against the example values in the WhateverGreen manual and synthetic VBT files, not yet on a wide range of real boards. Treat the output as a well-informed starting point, not a guaranteed working patch.
+<img width="1217" height="976" alt="vbt2fbpatch_main" src="https://github.com/user-attachments/assets/0029eef9-765a-4129-b016-32c1db1f8890" />
 
 ---
 
 ## About
+
+`vbt2fbpatch` reads the display connector table from a dumped Intel Video BIOS Table (VBT), checks your iGPU against the [WhateverGreen Intel HD manual](https://github.com/acidanthera/WhateverGreen/blob/master/Manual/FAQ.IntelHD.en.md), and prints a ready-to-use `DeviceProperties` snippet for your `config.plist`.
 
 Getting Intel graphics to work on a Hackintosh usually means answering three questions:
 
@@ -39,6 +33,12 @@ The answers are spread across the manual, the framebuffer lists and your board's
 - It does not touch BIOS settings. Follow the manual's firmware requirements (for example DVMT pre-allocation).
 
 Single file, Python 3.8+, no external dependencies. Works on macOS, Linux and Windows.
+
+> [!NOTE]
+> 
+> Treat this as a proof of concept. The original web app, built in Google AI Studio, has a GUI with more manual settings, but I haven't managed to turn it into a native macOS app yet.
+>
+> The command-line tool is tested against the example values in the WhateverGreen manual and synthetic VBT files, not yet on a wide range of real boards. Treat the output as a well-informed starting point, not a guaranteed working patch.
 
 ---
 
