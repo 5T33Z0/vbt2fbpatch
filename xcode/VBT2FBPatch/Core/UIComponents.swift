@@ -27,9 +27,9 @@ struct Panel<Content: View>: View {
                     .frame(width: 32, height: 32)
                     .background(ThemeColor.teal.opacity(0.10), in: RoundedRectangle(cornerRadius: 9))
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
+                    Text(tr(title)).font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
                     if !subtitle.isEmpty {
-                        Text(subtitle).font(.system(size: 11)).foregroundStyle(ThemeColor.muted)
+                        Text(tr(subtitle)).font(.system(size: 11)).foregroundStyle(ThemeColor.muted)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -47,7 +47,7 @@ struct Panel<Content: View>: View {
 struct FieldLabel: View {
     let text: String
     var body: some View {
-        Text(text.uppercased())
+        Text(tr(text.uppercased()))
             .font(.system(size: 10, weight: .semibold, design: .rounded))
             .tracking(1.3)
             .foregroundStyle(ThemeColor.muted)
@@ -61,7 +61,7 @@ struct MiniMetric: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             FieldLabel(text: label)
-            Text(value).font(.system(size: 18, weight: .bold, design: .monospaced))
+            Text(tr(value)).font(.system(size: 18, weight: .bold, design: .monospaced))
                 .foregroundStyle(color).lineLimit(1).minimumScaleFactor(0.7)
         }
         .padding(15).frame(maxWidth: .infinity, alignment: .leading)
@@ -74,7 +74,7 @@ struct StatusTag: View {
     let text: String
     let color: Color
     var body: some View {
-        Text(text).font(.system(size: 10, weight: .bold, design: .monospaced))
+        Text(tr(text)).font(.system(size: 10, weight: .bold, design: .monospaced))
             .tracking(0.5)
             .padding(.horizontal, 9).padding(.vertical, 5)
             .foregroundStyle(color)
@@ -88,7 +88,7 @@ struct MonospaceBox: View {
     var minHeight: CGFloat = 200
     var body: some View {
         ScrollView([.horizontal, .vertical]) {
-            Text(text.isEmpty ? "(Keine Daten)" : text)
+            Text(text.isEmpty ? tr("(Keine Daten)") : text)
                 .font(.system(size: 11.5, weight: .regular, design: .monospaced))
                 .foregroundStyle(Color(red: 0.79, green: 0.91, blue: 0.96))
                 .lineSpacing(4)
@@ -111,7 +111,7 @@ struct IconAction: View {
 
     var body: some View {
         Button(action: action) {
-            Label(title, systemImage: icon)
+            Label(tr(title), systemImage: icon)
                 .font(.system(size: 12, weight: .semibold))
                 .padding(.vertical, 5)
         }

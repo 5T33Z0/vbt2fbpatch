@@ -147,7 +147,7 @@ final class Workbench: ObservableObject {
         guard let file = Bundle.main.url(forResource: stem, withExtension: "bin", subdirectory: "Samples")
                 ?? Bundle.main.url(forResource: stem, withExtension: "bin", subdirectory: "Resources/Samples")
                 ?? Bundle.main.url(forResource: stem, withExtension: "bin") else {
-            error = "Sample \(filename) nicht im App-Bundle gefunden."
+            error = AppLocalization.format("Sample %@ nicht im App-Bundle gefunden.", filename)
             return
         }
         do {
@@ -180,8 +180,8 @@ final class Workbench: ObservableObject {
 
     func openVBT() {
         let panel = NSOpenPanel()
-        panel.title = "Intel Video BIOS Table öffnen"
-        panel.prompt = "VBT laden"
+        panel.title = tr("Intel Video BIOS Table öffnen")
+        panel.prompt = tr("VBT laden")
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         panel.begin { [weak self] result in
@@ -198,8 +198,8 @@ final class Workbench: ObservableObject {
 
     func openPlist() {
         let panel = NSOpenPanel()
-        panel.title = "OpenCore config.plist auswählen"
-        panel.prompt = "config.plist laden"
+        panel.title = tr("OpenCore config.plist auswählen")
+        panel.prompt = tr("config.plist laden")
         panel.canChooseDirectories = false
         panel.begin { [weak self] result in
             guard result == .OK, let url = panel.url else { return }
@@ -214,19 +214,19 @@ final class Workbench: ObservableObject {
                 self?.plistSource = data
                 self?.plistURL = url
                 self?.page = .merge
-                self?.notice = "config.plist geladen. Merge-Vorschau verfügbar."
+                self?.notice = tr("config.plist geladen. Merge-Vorschau verfügbar.")
             } catch { self?.error = error.localizedDescription }
         }
     }
 
     func saveXML() {
-        guard let patch = currentPatch else { error = patchError ?? "Kein VBT geladen."; return }
+        guard let patch = currentPatch else { error = patchError ?? tr("Kein VBT geladen."); return }
         save(data: Data(patch.xml.utf8), suggested: "OpenCore_Framebuffer_\(platformID).xml")
     }
 
     func exportMergedPlist() {
         guard let data = mergedPlistData else {
-            error = "Zuerst eine config.plist und eine gültige VBT laden."
+            error = tr("Zuerst eine config.plist und eine gültige VBT laden.")
             return
         }
         save(data: data, suggested: "config-patched.plist")
@@ -239,7 +239,7 @@ final class Workbench: ObservableObject {
         if panel.runModal() == .OK, let url = panel.url {
             do {
                 try data.write(to: url, options: .atomic)
-                notice = "Exportiert: \(url.lastPathComponent)"
+                notice = AppLocalization.format("Exportiert: %@", url.lastPathComponent)
             } catch { self.error = error.localizedDescription }
         }
     }
@@ -247,15 +247,15 @@ final class Workbench: ObservableObject {
     // The in-place action is explicit, and a separate timestamped backup is created first.
     func applyMergeInPlace() {
         guard let url = plistURL, let data = mergedPlistData else {
-            error = "Bitte gültige config.plist laden und einen Patch erzeugen."
+            error = tr("Bitte gültige config.plist laden und einen Patch erzeugen.")
             return
         }
         let alert = NSAlert()
-        alert.messageText = "OpenCore config.plist wirklich ändern?"
-        alert.informativeText = "Die Datei wird nach einem Backup überschrieben. EFI vor dem Booten prüfen. Unbekannte Keys bleiben erhalten."
+        alert.messageText = tr("OpenCore config.plist wirklich ändern?")
+        alert.informativeText = tr("Die Datei wird nach einem Backup überschrieben. EFI vor dem Booten prüfen. Unbekannte Keys bleiben erhalten.")
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "Backup + Patch anwenden")
-        alert.addButton(withTitle: "Abbrechen")
+        alert.addButton(withTitle: tr("Backup + Patch anwenden"))
+        alert.addButton(withTitle: tr("Abbrechen"))
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
@@ -265,16 +265,16 @@ final class Workbench: ObservableObject {
             try FileManager.default.copyItem(at: url, to: bak)
             try data.write(to: url, options: .atomic)
             plistSource = data
-            notice = "config.plist gepatcht. Backup: \(bak.lastPathComponent)"
+            notice = AppLocalization.format("config.plist gepatcht. Backup: %@", bak.lastPathComponent)
         } catch {
-            self.error = "Patch abgebrochen. \(error.localizedDescription)"
+            self.error = AppLocalization.format("Patch abgebrochen. %@", error.localizedDescription)
         }
     }
 
     func copy(_ text: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
-        notice = "In die Zwischenablage kopiert."
+        notice = tr("In die Zwischenablage kopiert.")
     }
 
     func cliCommand() -> String {
@@ -298,16 +298,16 @@ final class Workbench: ObservableObject {
     func exportCLI() {
         guard let file = Bundle.main.url(forResource: "vbt2fbpatch", withExtension: "py"),
               let data = try? Data(contentsOf: file) else {
-            error = "CLI-Quellcode nicht im Bundle gefunden."
+            error = tr("CLI-Quellcode nicht im Bundle gefunden.")
             return
         }
         save(data: data, suggested: "vbt2fbpatch.py")
     }
 
     func runCLI(json: Bool = false) {
-        guard !sourceData.isEmpty else { error = "Erst VBT laden."; return }
+        guard !sourceData.isEmpty else { error = tr("Erst VBT laden."); return }
         guard let script = Bundle.main.url(forResource: "vbt2fbpatch", withExtension: "py") else {
-            error = "Python-CLI nicht im App-Bundle gefunden."; return
+            error = tr("Python-CLI nicht im App-Bundle gefunden."); return
         }
         cliRunning = true
         let bytes = sourceData
@@ -348,12 +348,12 @@ final class Workbench: ObservableObject {
                 try process.run()
                 let collected = output.fileHandleForReading.readDataToEndOfFile()
                 process.waitUntilExit()
-                result = String(data: collected, encoding: .utf8) ?? "(Keine Ausgabe)"
+                result = String(data: collected, encoding: .utf8) ?? tr("(Keine Ausgabe)")
                 if process.terminationStatus != 0 {
                     result = "[CLI exit \(process.terminationStatus)]\n" + result
                 }
             } catch {
-                result = "Python-CLI konnte nicht gestartet werden: \(error.localizedDescription)\nDie native Swift-Patch-Engine ist weiterhin nutzbar."
+                result = AppLocalization.format("Python-CLI konnte nicht gestartet werden: %@\nDie native Swift-Patch-Engine ist weiterhin nutzbar.", error.localizedDescription)
             }
             DispatchQueue.main.async {
                 self.cliOutput = result

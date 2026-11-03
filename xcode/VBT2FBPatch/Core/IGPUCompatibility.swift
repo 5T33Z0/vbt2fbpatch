@@ -17,10 +17,10 @@ struct IGPUModel: Codable, Identifiable {
     var id: String { deviceId }
     var statusLabel: String {
         switch status {
-        case "native": return "NATIV"
-        case "needs_spoof": return "SPOOF NÖTIG"
-        case "legacy_ventura": return "LEGACY"
-        case "unsupported": return "NICHT UNTERSTÜTZT"
+        case "native": return tr("NATIV")
+        case "needs_spoof": return tr("SPOOF NÖTIG")
+        case "legacy_ventura": return tr("LEGACY")
+        case "unsupported": return tr("NICHT UNTERSTÜTZT")
         default: return status.uppercased()
         }
     }
@@ -48,26 +48,26 @@ enum IGPUCompatibility {
         var model = database[padded] ?? IGPUModel(
             deviceId: padded,
             name: "Intel Graphics Controller (0x\(padded))",
-            generation: "Unbekannte Intel iGPU",
+            generation: tr("Unbekannte Intel iGPU"),
             series: "desktop", architecture: "Intel Graphics",
             status: "needs_spoof",
-            statusDescription: "Unbekannte Device-ID. Spoof nur nach Prüfung der GPU-Generation!",
+            statusDescription: tr("Unbekannte Device-ID. Spoof nur nach Prüfung der GPU-Generation!"),
             recommendedPlatformId: "07009B3E",
             recommendedSpoofDeviceId: "3E9B",
-            recommendedBootArgs: nil, notes: "Unbekannte Hardware sollte nicht blind gepatcht werden.",
-            macosVersionSupport: "Ungeprüft"
+            recommendedBootArgs: nil, notes: tr("Unbekannte Hardware sollte nicht blind gepatcht werden."),
+            macosVersionSupport: tr("Ungeprüft")
         )
         if padded == "3E98" {
             if version(macOS, atLeast: "10.14.4") {
                 model.status = "native"; model.recommendedSpoofDeviceId = nil
-                model.statusDescription = "Nativ ab macOS 10.14.4 unterstützt."
+                model.statusDescription = tr("Nativ ab macOS 10.14.4 unterstützt.")
             } else {
                 model.status = "needs_spoof"; model.recommendedSpoofDeviceId = "3E92"
             }
         } else if padded == "5917" {
             if version(macOS, atLeast: "10.13.6") {
                 model.status = "native"; model.recommendedSpoofDeviceId = nil
-                model.statusDescription = "Nativ ab macOS 10.13.6 unterstützt."
+                model.statusDescription = tr("Nativ ab macOS 10.13.6 unterstützt.")
             } else {
                 model.status = "needs_spoof"; model.recommendedSpoofDeviceId = "5916"
             }
@@ -76,24 +76,24 @@ enum IGPUCompatibility {
                 model.status = "needs_spoof"
                 model.recommendedSpoofDeviceId = padded == "1912" ? "5912" : "5916"
                 model.recommendedBootArgs = "-igfxsklaskbl"
-                model.statusDescription = "Skylake-Treiber fehlen ab Ventura. Kaby-Lake-Spoof + Boot-Argument notwendig."
+                model.statusDescription = tr("Skylake-Treiber fehlen ab Ventura. Kaby-Lake-Spoof + Boot-Argument notwendig.")
             } else {
                 model.status = "native"
                 model.recommendedSpoofDeviceId = nil
                 model.recommendedBootArgs = nil
-                model.statusDescription = "Nativ unterstützt bis einschließlich Monterey."
+                model.statusDescription = tr("Nativ unterstützt bis einschließlich Monterey.")
             }
         }
         var warnings: [String] = []
         if model.status == "unsupported" {
-            warnings.append("Diese iGPU besitzt keinen macOS-Grafiktreiber. Ein Spoof allein kann keine Beschleunigung ermöglichen.")
+            warnings.append(tr("Diese iGPU besitzt keinen macOS-Grafiktreiber. Ein Spoof allein kann keine Beschleunigung ermöglichen."))
         } else if model.status == "needs_spoof" || model.status == "legacy_ventura" {
             if let spoof = model.recommendedSpoofDeviceId {
-                warnings.append("WhateverGreen device-id 0x\(spoof) für Device 0x\(padded) empfohlen.")
+                warnings.append(AppLocalization.format("WhateverGreen device-id 0x%@ für Device 0x%@ empfohlen.", spoof, padded))
             }
         }
-        if let arg = model.recommendedBootArgs, !arg.isEmpty { warnings.append("Boot-Argument erforderlich: \(arg)") }
-        if database[padded] == nil { warnings.append("Nicht katalogisierte iGPU: Generation und Plattform-ID selbst prüfen.") }
+        if let arg = model.recommendedBootArgs, !arg.isEmpty { warnings.append(AppLocalization.format("Boot-Argument erforderlich: %@", arg)) }
+        if database[padded] == nil { warnings.append(tr("Nicht katalogisierte iGPU: Generation und Plattform-ID selbst prüfen.")) }
         return IGPUAnalysis(model: model, recommendedSpoof: model.recommendedSpoofDeviceId,
                             bootArgs: model.recommendedBootArgs, warnings: warnings)
     }

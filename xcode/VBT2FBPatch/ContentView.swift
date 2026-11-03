@@ -5,6 +5,7 @@ struct ContentView: View {
     @StateObject private var vm = Workbench()
     @State private var advancedShown = false
     @State private var dropTarget = false
+    @AppStorage(AppLocalization.settingKey) private var interfaceLanguage = "system"
 
     var body: some View {
         HStack(spacing: 0) {
@@ -34,6 +35,7 @@ struct ContentView: View {
         .frame(minWidth: 1080, minHeight: 720)
         .preferredColorScheme(.dark)
         .tint(ThemeColor.teal)
+        .environment(\.locale, Locale(identifier: AppLocalization.effectiveLanguage(interfaceLanguage)))
         .onDrop(of: [UTType.fileURL.identifier], isTargeted: $dropTarget) { providers in
             guard let provider = providers.first else { return false }
             _ = provider.loadObject(ofClass: NSURL.self) { object, _ in
@@ -95,7 +97,7 @@ struct ContentView: View {
             .padding(.horizontal, 11).padding(.top, 22)
 
             VStack(alignment: .leading, spacing: 7) {
-                FieldLabel(text: "Arbeitsbereich").padding(.horizontal, 13).padding(.bottom, 6)
+                FieldLabel(text: tr("Arbeitsbereich")).padding(.horizontal, 13).padding(.bottom, 6)
                 ForEach(WorkspacePage.allCases) { section in
                     Button {
                         vm.page = section
@@ -104,7 +106,7 @@ struct ContentView: View {
                             Image(systemName: section.icon)
                                 .font(.system(size: 14))
                                 .frame(width: 20)
-                            Text(section.rawValue)
+                            Text(tr(section.rawValue))
                                 .font(.system(size: 12.5, weight: vm.page == section ? .semibold : .medium))
                             Spacer(minLength: 0)
                             if vm.page == section { Circle().fill(ThemeColor.teal).frame(width: 5, height: 5) }
@@ -123,19 +125,32 @@ struct ContentView: View {
 
             Spacer()
 
+            VStack(alignment: .leading, spacing: 7) {
+                FieldLabel(text: "Sprache")
+                Picker(tr("Sprache"), selection: $interfaceLanguage) {
+                    Text(tr("System")).tag("system")
+                    Text(tr("Deutsch")).tag("de")
+                    Text(tr("English")).tag("en")
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, 13)
+
             VStack(alignment: .leading, spacing: 12) {
-                FieldLabel(text: "Aktuelle VBT")
-                Text(vm.sourceName.isEmpty ? "Keine Datei" : vm.sourceName)
+                FieldLabel(text: tr("Aktuelle VBT"))
+                Text(vm.sourceName.isEmpty ? tr("Keine Datei") : vm.sourceName)
                     .font(.system(size: 11, weight: .medium, design: .monospaced))
                     .foregroundStyle(.white).lineLimit(2)
                 HStack {
-                    Label("\(vm.parsed?.connectors.count ?? 0) Ports", systemImage: "display")
+                    Label(AppLocalization.format("%d Ports", vm.parsed?.connectors.count ?? 0), systemImage: "display")
                     Spacer()
                     Text(vm.sourceData.isEmpty ? "—" : "\(vm.sourceData.count) B")
                 }
                 .font(.system(size: 10)).foregroundStyle(ThemeColor.muted)
                 Button { vm.openVBT() } label: {
-                    Label("VBT importieren", systemImage: "square.and.arrow.down")
+                    Label(tr("VBT importieren"), systemImage: "square.and.arrow.down")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered).controlSize(.small)
@@ -154,7 +169,7 @@ struct ContentView: View {
         HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 10) {
-                    Text(vm.page.rawValue)
+                    Text(tr(vm.page.rawValue))
                         .font(.system(size: 27, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                     StatusTag(text: "NATIVE", color: ThemeColor.teal)
@@ -164,21 +179,21 @@ struct ContentView: View {
             }
             Spacer()
             if vm.parsed != nil {
-                IconAction(title: "XML exportieren", icon: "square.and.arrow.up", prominent: true) { vm.saveXML() }
+                IconAction(title: tr("XML exportieren"), icon: "square.and.arrow.up", prominent: true) { vm.saveXML() }
             }
-            IconAction(title: "Öffnen", icon: "folder", action: { vm.openVBT() })
+            IconAction(title: tr("Öffnen"), icon: "folder", action: { vm.openVBT() })
         }
     }
 
     private var sourceControls: some View {
         VStack(spacing: 15) {
             HStack(alignment: .top, spacing: 15) {
-                Panel(title: "Intel VBT Binary", subtitle: "Sample auswählen oder eigenen VBT/ROM laden", icon: "doc.binary") {
-                    Picker("Beispieldatei", selection: Binding(
+                Panel(title: "Intel VBT Binary", subtitle: tr("Sample auswählen oder eigenen VBT/ROM laden"), icon: "doc.binary") {
+                    Picker(tr("Beispieldatei"), selection: Binding(
                         get: { vm.selectedSample },
                         set: { vm.loadSample($0) }
                     )) {
-                        if vm.selectedSample.isEmpty { Text("Eigene Datei").tag("") }
+                        if vm.selectedSample.isEmpty { Text(tr("Eigene Datei")).tag("") }
                         ForEach(VBTSample.all) { s in
                             Text(s.title).tag(s.filename)
                         }
@@ -187,24 +202,24 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity)
                     HStack(spacing: 9) {
                         Image(systemName: "doc.zipper").foregroundStyle(ThemeColor.teal)
-                        Text(vm.sourceName.isEmpty ? "Noch keine VBT" : vm.sourceName)
+                        Text(vm.sourceName.isEmpty ? tr("Noch keine VBT") : vm.sourceName)
                             .lineLimit(1).truncationMode(.middle)
                         Spacer(minLength: 0)
-                        Text("\(vm.sourceData.count) Bytes")
+                        Text("\(vm.sourceData.count) " + tr("Bytes"))
                             .foregroundStyle(ThemeColor.muted)
                     }
                     .font(.system(size: 11, design: .monospaced))
                     Button { vm.openVBT() } label: {
-                        Label("Eigene vbt.bin oder ROM laden / Datei hierher ziehen",
+                        Label(tr("Eigene vbt.bin oder ROM laden / Datei hierher ziehen"),
                               systemImage: "arrow.down.doc")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
                 }
-                Panel(title: "Intel iGPU / macOS", subtitle: "Device-ID und Zielsystem", icon: "cpu") {
+                Panel(title: "Intel iGPU / macOS", subtitle: tr("Device-ID und Zielsystem"), icon: "cpu") {
                     HStack(spacing: 10) {
                         VStack(alignment: .leading, spacing: 6) {
-                            FieldLabel(text: "Device-ID (HEX)")
+                            FieldLabel(text: tr("Device-ID (HEX)"))
                             TextField("3E9B", text: $vm.deviceID)
                                 .textFieldStyle(.roundedBorder)
                                 .font(.system(size: 12, design: .monospaced))
@@ -214,7 +229,7 @@ struct ContentView: View {
                                 }
                         }
                         VStack(alignment: .leading, spacing: 6) {
-                            FieldLabel(text: "macOS Target")
+                            FieldLabel(text: tr("macOS Target"))
                             TextField("14.0", text: $vm.targetMacOS)
                                 .textFieldStyle(.roundedBorder)
                                 .font(.system(size: 12, design: .monospaced))
@@ -227,7 +242,7 @@ struct ContentView: View {
                         Spacer(minLength: 0)
                     }
                 }
-                Panel(title: "Apple Framebuffer", subtitle: "AAPL,ig-platform-id (Little-Endian)", icon: "display") {
+                Panel(title: "Apple Framebuffer", subtitle: tr("AAPL,ig-platform-id (Little-Endian)"), icon: "display") {
                     Menu {
                         Button("Coffee Lake Desktop · 07009B3E") { vm.platformID = "07009B3E" }
                         Button("Coffee/Comet Lake Laptop · 00009B3E") { vm.platformID = "00009B3E" }
@@ -239,7 +254,7 @@ struct ContentView: View {
                         Button("Skylake Desktop · 00001619") { vm.platformID = "00001619" }
                         Button("Haswell Desktop · 0300220D") { vm.platformID = "0300220D" }
                     } label: {
-                        Label("Framebuffer-Preset wählen", systemImage: "square.stack.3d.down.right")
+                        Label(tr("Framebuffer-Preset wählen"), systemImage: "square.stack.3d.down.right")
                             .font(.system(size: 11))
                     }
                     .menuStyle(.borderlessButton)
@@ -251,11 +266,11 @@ struct ContentView: View {
                             if clean != value { vm.platformID = clean }
                         }
                     HStack {
-                        Text("Empfohlen: \(vm.analysis.model.recommendedPlatformId)")
+                        Text(tr("Empfohlen:") + " \(vm.analysis.model.recommendedPlatformId)")
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(ThemeColor.muted)
                         Spacer()
-                        Button("Übernehmen") {
+                        Button(tr("Übernehmen")) {
                             if vm.analysis.model.recommendedPlatformId != "UNSUPPORTED" {
                                 vm.platformID = vm.analysis.model.recommendedPlatformId
                             }
@@ -268,9 +283,9 @@ struct ContentView: View {
                 Label("Spoofing", systemImage: "shield.lefthalf.filled")
                     .font(.system(size: 12, weight: .medium)).foregroundStyle(ThemeColor.muted)
                 Picker("Spoofing", selection: $vm.spoofMode) {
-                    Text("Auto").tag("auto")
-                    Text("An").tag("on")
-                    Text("Aus").tag("off")
+                    Text(tr("Auto")).tag("auto")
+                    Text(tr("An")).tag("on")
+                    Text(tr("Aus")).tag("off")
                 }
                 .labelsHidden().pickerStyle(.segmented).frame(width: 185)
                 TextField("Spoof Device-ID (HEX)", text: $vm.customSpoofID)
@@ -280,11 +295,11 @@ struct ContentView: View {
                         let clean = String(value.uppercased().filter(\.isHexDigit).prefix(4))
                         if clean != value { vm.customSpoofID = clean }
                     }
-                Text(vm.isSpoofActive ? "Effektiv: 0x\(vm.effectiveSpoof ?? "—")" : "Kein device-id Spoof")
+                Text(vm.isSpoofActive ? tr("Effektiv:") + " 0x\(vm.effectiveSpoof ?? "—")" : tr("Kein device-id Spoof"))
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(vm.isSpoofActive ? ThemeColor.amber : ThemeColor.green)
                 Spacer()
-                Toggle("Erweitert", isOn: $advancedShown)
+                Toggle(tr("Erweitert"), isOn: $advancedShown)
                     .toggleStyle(.switch).controlSize(.small)
                     .font(.system(size: 11))
             }
@@ -295,63 +310,63 @@ struct ContentView: View {
     }
 
     private var advancedSettings: some View {
-        Panel(title: "Advanced Framebuffer & Hardware Tuning",
-              subtitle: "LSPCON, Backlight, Bus-ID, Framebuffer-Flags und Connector-Index",
+        Panel(title: tr("Advanced Framebuffer & Hardware Tuning"),
+              subtitle: tr("LSPCON, Backlight, Bus-ID, Framebuffer-Flags und Connector-Index"),
               icon: "slider.horizontal.3") {
             VStack(alignment: .leading, spacing: 15) {
                 HStack(spacing: 24) {
-                    Toggle("Unified Memory 2048 MB", isOn: $vm.unifiedMemory)
-                    Toggle("RPS Control", isOn: $vm.rpsControl)
-                    Toggle("Backlight Fix", isOn: $vm.backlightFix)
-                    Toggle("Laptop / max. 3 Ports", isOn: $vm.mobileMode)
+                    Toggle(tr("Unified Memory 2048 MB"), isOn: $vm.unifiedMemory)
+                    Toggle(tr("RPS Control"), isOn: $vm.rpsControl)
+                    Toggle(tr("Backlight Fix"), isOn: $vm.backlightFix)
+                    Toggle(tr("Laptop / max. 3 Ports"), isOn: $vm.mobileMode)
                 }
                 .font(.system(size: 12))
                 Divider().overlay(ThemeColor.stroke)
                 HStack(spacing: 14) {
                     VStack(alignment: .leading, spacing: 7) {
-                        FieldLabel(text: "Formfaktor")
-                        Picker("Formfaktor", selection: $vm.formFactor) {
-                            Text("Auto").tag("auto"); Text("Desktop").tag("desktop")
-                            Text("Mobile").tag("mobile"); Text("Headless").tag("headless")
+                        FieldLabel(text: tr("Formfaktor"))
+                        Picker(tr("Formfaktor"), selection: $vm.formFactor) {
+                            Text(tr("Auto")).tag("auto"); Text(tr("Desktop")).tag("desktop")
+                            Text(tr("Mobile")).tag("mobile"); Text(tr("Headless")).tag("headless")
                         }.labelsHidden()
                     }
                     VStack(alignment: .leading, spacing: 7) {
-                        FieldLabel(text: "Bus-ID Quelle")
-                        Picker("Bus-ID Quelle", selection: $vm.busIDSource) {
-                            Text("DDI (Standard)").tag("ddi"); Text("DDC / GMBUS").tag("ddc")
+                        FieldLabel(text: tr("Bus-ID Quelle"))
+                        Picker(tr("Bus-ID Quelle"), selection: $vm.busIDSource) {
+                            Text(tr("DDI (Standard)")).tag("ddi"); Text(tr("DDC / GMBUS")).tag("ddc")
                         }.labelsHidden()
                     }
                     VStack(alignment: .leading, spacing: 7) {
-                        FieldLabel(text: "LSPCON Mode")
-                        Picker("LSPCON Mode", selection: $vm.lspconMode) {
-                            Text("Auto").tag(""); Text("PCON (4K 60Hz)").tag("pcon")
-                            Text("Level Shifter").tag("ls")
+                        FieldLabel(text: tr("LSPCON Mode"))
+                        Picker(tr("LSPCON Mode"), selection: $vm.lspconMode) {
+                            Text(tr("Auto")).tag(""); Text(tr("PCON (4K 60Hz)")).tag("pcon")
+                            Text(tr("Level Shifter")).tag("ls")
                         }.labelsHidden()
                     }
                     VStack(alignment: .leading, spacing: 7) {
-                        FieldLabel(text: "Erster Connector")
-                        Picker("Erster Connector", selection: $vm.firstConnector) {
-                            Text("Auto").tag("auto"); Text("con0").tag("0")
+                        FieldLabel(text: tr("Erster Connector"))
+                        Picker(tr("Erster Connector"), selection: $vm.firstConnector) {
+                            Text(tr("Auto")).tag("auto"); Text("con0").tag("0")
                             Text("con1").tag("1"); Text("con2").tag("2"); Text("con3").tag("3")
                         }.labelsHidden()
                     }
                     VStack(alignment: .leading, spacing: 7) {
-                        FieldLabel(text: "Pipe Override")
-                        TextField("z.B. 18", text: $vm.pipeOverride)
+                        FieldLabel(text: tr("Pipe Override"))
+                        TextField(tr("z.B. 18"), text: $vm.pipeOverride)
                             .textFieldStyle(.roundedBorder).frame(width: 95)
                     }
                 }
                 HStack(spacing: 15) {
                     VStack(alignment: .leading, spacing: 7) {
-                        FieldLabel(text: "Framebuffer Flags (Hex)")
+                        FieldLabel(text: tr("Framebuffer Flags (Hex)"))
                         TextField("0xE30B0A", text: $vm.framebufferFlags).textFieldStyle(.roundedBorder)
                     }
                     VStack(alignment: .leading, spacing: 7) {
-                        FieldLabel(text: "Connector Flags (Hex)")
+                        FieldLabel(text: tr("Connector Flags (Hex)"))
                         TextField("0x3C7", text: $vm.connectorFlags).textFieldStyle(.roundedBorder)
                     }
                 }
-                Text("Achtung: Diese Werte hängen vom Mainboard und geladenen macOS-Treiber ab. EFI-Backups bleiben Pflicht.")
+                Text(tr("Achtung: Diese Werte hängen vom Mainboard und geladenen macOS-Treiber ab. EFI-Backups bleiben Pflicht."))
                     .font(.system(size: 11)).foregroundStyle(ThemeColor.amber)
             }
         }

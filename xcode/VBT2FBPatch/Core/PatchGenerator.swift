@@ -53,11 +53,11 @@ enum PatchError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .badPlatform: return "Platform-ID muss aus genau 8 Hex-Zeichen bestehen (z.B. 07009B3E)."
-        case .badSpoof: return "Spoof Device-ID muss aus genau 4 Hex-Zeichen bestehen (z.B. 3E9B)."
-        case .badNumber(let label): return "Ungültige Zahl/Hex-Wert: \(label)."
-        case .invalidPlist: return "Die ausgewählte Datei ist keine gültige XML- oder Binär-Plist."
-        case .invalidStructure(let detail): return "config.plist enthält einen unerwarteten Wert: \(detail)."
+        case .badPlatform: return tr("Platform-ID muss aus genau 8 Hex-Zeichen bestehen (z.B. 07009B3E).")
+        case .badSpoof: return tr("Spoof Device-ID muss aus genau 4 Hex-Zeichen bestehen (z.B. 3E9B).")
+        case .badNumber(let label): return AppLocalization.format("Ungültige Zahl/Hex-Wert: %@.", label)
+        case .invalidPlist: return tr("Die ausgewählte Datei ist keine gültige XML- oder Binär-Plist.")
+        case .invalidStructure(let detail): return AppLocalization.format("config.plist enthält einen unerwarteten Wert: %@.", detail)
         }
     }
 }
@@ -97,10 +97,10 @@ enum PatchGenerator {
         let kept = Array(sorted.prefix(max(0, count)))
         var warnings: [String] = []
         if sorted.count > kept.count {
-            warnings.append("\(sorted.count - kept.count) Anschluss/Anschlüsse passen nicht in con0...con3 und werden nicht gepatcht.")
+            warnings.append(AppLocalization.format("%d Anschluss/Anschlüsse passen nicht in con0...con3 und werden nicht gepatcht.", sorted.count - kept.count))
         }
         if sorted.filter(\.isInternal).count > 1 {
-            warnings.append("Mehrere interne Panels gefunden. Connector-Zuordnung bitte manuell prüfen.")
+            warnings.append(tr("Mehrere interne Panels gefunden. Connector-Zuordnung bitte manuell prüfen."))
         }
         if let pipe = s.pipeOverride, !(0...255).contains(pipe) {
             throw PatchError.badNumber("Pipe (0...255)")
@@ -116,7 +116,7 @@ enum PatchGenerator {
             var bus = con.appleBusId
             if s.busIDSource == "ddc" && !con.isInternal && ["HDMI", "DVI-D", "DP++"].contains(con.kind) {
                 if [4, 5, 6].contains(con.ddcPin) { bus = con.ddcPin }
-                else { warnings.append("DDI \(con.intelPort): DDC-Pin \(con.ddcPin) nicht 4/5/6, verwende DDI-Bus-ID.") }
+                else { warnings.append(AppLocalization.format("DDI %@: DDC-Pin %d nicht 4/5/6, verwende DDI-Bus-ID.", con.intelPort, con.ddcPin)) }
             }
             // FAQ: internal panel pipe 8, external ports 9, 10, 7 (desktop: 9,10,8,7).
             let defaultPipes = hasPanel ? [9, 10, 7] : [9, 10, 8, 7]
@@ -202,7 +202,7 @@ enum PatchGenerator {
             let ascii = slice.map { (32...126).contains(Int($0)) ? String(UnicodeScalar(Int($0))!) : "." }.joined()
             lines.append(String(format: "%08X  ",offset) + hex.padding(toLength: 47, withPad: " ", startingAt: 0) + "  " + ascii)
         }
-        if bytes.count > maxBytes { lines.append("… \(bytes.count - maxBytes) weitere Bytes") }
+        if bytes.count > maxBytes { lines.append(AppLocalization.format("… %d weitere Bytes", bytes.count - maxBytes)) }
         return lines.joined(separator: "\n")
     }
 }

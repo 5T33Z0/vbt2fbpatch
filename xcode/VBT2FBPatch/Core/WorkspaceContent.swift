@@ -7,12 +7,12 @@ struct WorkspaceContent: View {
         VStack(alignment: .leading, spacing: 17) {
             if let vbt = vm.parsed {
                 HStack(spacing: 0) {
-                    headerValue("VBT OFFSET", String(format: "0x%04X", vbt.vbtOffset))
-                    headerValue("VBT VERSION", "\(vbt.version)")
-                    headerValue("BDB VERSION", "\(vbt.bdbVersion)")
-                    headerValue("CHILD STRIDE", "\(vbt.stride) B")
-                    headerValue("AKTIVE PORTS", "\(vbt.connectors.count)", color: ThemeColor.green)
-                    if let pci = vbt.pciDeviceID { headerValue("PCI DEVICE", "0x\(pci)") }
+                    headerValue(tr("VBT OFFSET"), String(format: "0x%04X", vbt.vbtOffset))
+                    headerValue(tr("VBT VERSION"), "\(vbt.version)")
+                    headerValue(tr("BDB VERSION"), "\(vbt.bdbVersion)")
+                    headerValue(tr("CHILD STRIDE"), "\(vbt.stride) B")
+                    headerValue(tr("AKTIVE PORTS"), "\(vbt.connectors.count)", color: ThemeColor.green)
+                    if let pci = vbt.pciDeviceID { headerValue(tr("PCI DEVICE"), "0x\(pci)") }
                 }
                 .padding(13)
                 .background(ThemeColor.panel, in: RoundedRectangle(cornerRadius: 12))
@@ -44,31 +44,31 @@ struct WorkspaceContent: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 13) {
                 MiniMetric(label: "Device-ID", value: "0x\(vm.analysis.model.deviceId)")
-                MiniMetric(label: "STATUS", value: vm.analysis.model.statusLabel,
+                MiniMetric(label: tr("STATUS"), value: vm.analysis.model.statusLabel,
                            color: statusColor(vm.analysis.model.status))
-                MiniMetric(label: "FRAMEBUFFER", value: "<\(vm.platformID)>", color: ThemeColor.green)
-                MiniMetric(label: "OUTPUTS", value: "\(vm.parsed?.connectors.count ?? 0) Ports")
+                MiniMetric(label: tr("FRAMEBUFFER"), value: "<\(vm.platformID)>", color: ThemeColor.green)
+                MiniMetric(label: tr("OUTPUTS"), value: AppLocalization.format("%d Ports", vm.parsed?.connectors.count ?? 0))
             }
-            Panel(title: "Rosetta Stone: Intel Hardware → Apple Framebuffer",
-                  subtitle: "Physische DDI-Verkabelung aus dem BIOS und WhateverGreen-Zuordnung",
+            Panel(title: tr("Rosetta Stone: Intel Hardware → Apple Framebuffer"),
+                  subtitle: tr("Physische DDI-Verkabelung aus dem BIOS und WhateverGreen-Zuordnung"),
                   icon: "point.3.connected.trianglepath.dotted") {
                 if let vbt = vm.parsed, !vbt.connectors.isEmpty {
                     VStack(spacing: 11) {
                         HStack {
-                            FieldLabel(text: "INTEL VBT / HARDWARE")
+                            FieldLabel(text: tr("INTEL VBT / HARDWARE"))
                             Spacer()
-                            FieldLabel(text: "APPLE FRAMEBUFFER / DEVICEPROPERTIES")
+                            FieldLabel(text: tr("APPLE FRAMEBUFFER / DEVICEPROPERTIES"))
                         }
                         ForEach(Array(vbt.connectors.enumerated()), id: \.element.id) { i, con in
                             routingRow(con, index: i, hasPanel: vbt.connectors.contains(where: \.isInternal))
                         }
                     }
                 } else {
-                    empty("Keine aktiven Connectoren gefunden", "Versuche eine andere VBT-Datei.")
+                    empty(tr("Keine aktiven Connectoren gefunden"), tr("Versuche eine andere VBT-Datei."))
                 }
             }
             if !vm.analysis.warnings.isEmpty || !(vm.currentPatch?.warnings.isEmpty ?? true) {
-                Panel(title: "Wichtige Hinweise", subtitle: "Aus Kompatibilitätsdatenbank und Patch-Limitierungen",
+                Panel(title: tr("Wichtige Hinweise"), subtitle: tr("Aus Kompatibilitätsdatenbank und Patch-Limitierungen"),
                       icon: "exclamationmark.triangle") {
                     ForEach(vm.analysis.warnings + (vm.currentPatch?.warnings ?? []), id: \.self) { warning in
                         Label(warning, systemImage: "exclamationmark.triangle.fill")
@@ -131,7 +131,7 @@ struct WorkspaceContent: View {
     private var compatibility: some View {
         VStack(alignment: .leading, spacing: 17) {
             Panel(title: "WhateverGreen iGPU Compatibility",
-                  subtitle: "Intel iGPU Modelldaten, Spoof-Empfehlungen und macOS-Versionen", icon: "cpu") {
+                  subtitle: tr("Intel iGPU Modelldaten, Spoof-Empfehlungen und macOS-Versionen"), icon: "cpu") {
                 HStack(spacing: 14) {
                     Image(systemName: "cpu.fill").font(.system(size: 30))
                         .foregroundStyle(statusColor(vm.analysis.model.status))
@@ -142,22 +142,22 @@ struct WorkspaceContent: View {
                         Text(vm.analysis.model.name).font(.system(size: 18, weight: .semibold))
                         Text(vm.analysis.model.generation + "  ·  " + vm.analysis.model.architecture)
                             .font(.system(size: 12)).foregroundStyle(ThemeColor.muted)
-                        Text(vm.analysis.model.statusDescription)
+                        Text(tr(vm.analysis.model.statusDescription))
                             .font(.system(size: 11)).foregroundStyle(ThemeColor.muted)
                     }
                     Spacer()
                     StatusTag(text: vm.analysis.model.statusLabel, color: statusColor(vm.analysis.model.status))
                 }
                 HStack(spacing: 13) {
-                    MiniMetric(label:"PCI DEVICE", value:"0x" + vm.deviceID)
-                    MiniMetric(label:"RECOMMENDED PLATFORM", value:vm.analysis.model.recommendedPlatformId)
-                    MiniMetric(label:"SPOOF TARGET", value:vm.analysis.recommendedSpoof.map { "0x" + $0 } ?? "Keiner")
+                    MiniMetric(label:tr("PCI DEVICE"), value:"0x" + vm.deviceID)
+                    MiniMetric(label:tr("RECOMMENDED PLATFORM"), value:vm.analysis.model.recommendedPlatformId)
+                    MiniMetric(label:tr("SPOOF TARGET"), value:vm.analysis.recommendedSpoof.map { "0x" + $0 } ?? tr("Keiner"))
                 }
                 Text("macOS: \(vm.analysis.model.macosVersionSupport)\n\(vm.analysis.model.notes)")
                     .font(.system(size: 12)).foregroundStyle(ThemeColor.muted)
                     .textSelection(.enabled)
                 if let args = vm.analysis.bootArgs {
-                    Label("Boot-Argument: " + args, systemImage: "terminal")
+                    Label(tr("Boot-Argument:") + " " + args, systemImage: "terminal")
                         .font(.system(size: 12, design: .monospaced))
                         .foregroundStyle(ThemeColor.amber)
                 }
@@ -166,10 +166,10 @@ struct WorkspaceContent: View {
                         .font(.system(size: 11)).foregroundStyle(ThemeColor.amber)
                 }
             }
-            Panel(title: "Intel iGPU Datenbank",
-                  subtitle: "\(IGPUCompatibility.database.count) portierte Modelle aus der React-Datenbank. Eintrag anklicken, um Device-ID zu übernehmen.",
+            Panel(title: tr("Intel iGPU Datenbank"),
+                  subtitle: AppLocalization.format("%d portierte Modelle aus der React-Datenbank. Eintrag anklicken, um Device-ID zu übernehmen.", IGPUCompatibility.database.count),
                   icon: "list.bullet.rectangle") {
-                TextField("Suche nach Device-ID, Architektur oder GPU-Modell", text: $vm.searchQuery)
+                TextField(tr("Suche nach Device-ID, Architektur oder GPU-Modell"), text: $vm.searchQuery)
                     .textFieldStyle(.roundedBorder)
                 VStack(spacing: 0) {
                     ForEach(vm.filteredGPUs) { gpu in
@@ -202,15 +202,15 @@ struct WorkspaceContent: View {
     }
 
     private var connectors: some View {
-        Panel(title: "Connector Summary Table",
-              subtitle: "Child Device Config aus Block 0x02 / 0x28 · Originalhardware und Apple-Typen",
+        Panel(title: tr("Connector Summary Table"),
+              subtitle: tr("Child Device Config aus Block 0x02 / 0x28 · Originalhardware und Apple-Typen"),
               icon: "list.bullet.rectangle") {
             if let vbt = vm.parsed {
                 HStack {
-                    MiniMetric(label:"BDB Version", value:"\(vbt.bdbVersion)")
-                    MiniMetric(label:"Stride", value:"\(vbt.stride) Bytes")
-                    MiniMetric(label:"Alle Devices", value:"\(vbt.allDevices.count)")
-                    MiniMetric(label:"Aktive", value:"\(vbt.connectors.count)", color: ThemeColor.green)
+                    MiniMetric(label:tr("BDB Version"), value:"\(vbt.bdbVersion)")
+                    MiniMetric(label:tr("Stride"), value:"\(vbt.stride) " + tr("Bytes"))
+                    MiniMetric(label:tr("Alle Devices"), value:"\(vbt.allDevices.count)")
+                    MiniMetric(label:tr("Aktive"), value:"\(vbt.connectors.count)", color: ThemeColor.green)
                 }
                 connectorHeader
                 ForEach(vbt.allDevices) { con in connectorRow(con) }
@@ -222,9 +222,9 @@ struct WorkspaceContent: View {
         HStack(spacing: 8) {
             col("SLOT", 42); col("PORT", 80); col("DVO", 45); col("TYPE", 65)
             col("DEVICE-TYPE", 90); col("DDC", 38); col("AUX", 38)
-            col("BUS-ID", 53); col("macOS TYPE (LE)", 115)
+            col("BUS-ID", 53); col(tr("macOS TYPE (LE)"), 115)
             Spacer()
-            col("STATUS", 68)
+            col(tr("STATUS"), 68)
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
         .background(ThemeColor.sunken, in: RoundedRectangle(cornerRadius: 8))
@@ -244,7 +244,7 @@ struct WorkspaceContent: View {
             col(String(format:"0x%02X",con.appleBusId),53)
             col(con.typeHex,115)
             Spacer()
-            StatusTag(text: con.active ? "AKTIV" : "INAKTIV",
+            StatusTag(text: con.active ? tr("AKTIV") : tr("INAKTIV"),
                       color: con.active ? ThemeColor.green : ThemeColor.muted)
                 .frame(width: 68)
         }
@@ -254,18 +254,18 @@ struct WorkspaceContent: View {
 
     private var xml: some View {
         Panel(title: "OpenCore DeviceProperties XML",
-              subtitle: "Native Swift-Generierung · Base64 <data> und Hex-Kommentare",
+              subtitle: tr("Native Swift-Generierung · Base64 <data> und Hex-Kommentare"),
               icon: "chevron.left.forwardslash.chevron.right") {
             HStack {
-                StatusTag(text: "\(vm.currentPatch?.properties.count ?? 0) PROPERTIES", color: ThemeColor.teal)
+                StatusTag(text: AppLocalization.format("%d PROPERTIES", vm.currentPatch?.properties.count ?? 0), color: ThemeColor.teal)
                 Text(PatchGenerator.pciPath)
                     .font(.system(size: 11, design: .monospaced)).foregroundStyle(ThemeColor.muted)
                 Spacer()
-                IconAction(title:"Kopieren",icon:"doc.on.doc") { vm.copy(vm.xml) }
-                IconAction(title:"Als XML sichern",icon:"square.and.arrow.up",prominent:true) { vm.saveXML() }
+                IconAction(title:tr("Kopieren"),icon:"doc.on.doc") { vm.copy(vm.xml) }
+                IconAction(title:tr("Als XML sichern"),icon:"square.and.arrow.up",prominent:true) { vm.saveXML() }
             }
             MonospaceBox(text: vm.xml, minHeight: 450)
-            Text("Der XML-Auszug ist ein DeviceProperties-Dictionary. Für eine vollständige OpenCore config.plist bitte den Merge-Bereich verwenden.")
+            Text(tr("Der XML-Auszug ist ein DeviceProperties-Dictionary. Für eine vollständige OpenCore config.plist bitte den Merge-Bereich verwenden."))
                 .font(.system(size: 11)).foregroundStyle(ThemeColor.muted)
             if let patch = vm.currentPatch {
                 VStack(alignment: .leading, spacing: 8) {
@@ -285,46 +285,46 @@ struct WorkspaceContent: View {
     }
 
     private var merge: some View {
-        Panel(title: "Merge in OpenCore config.plist",
-              subtitle: "Bestehende DeviceProperties bleiben erhalten · XML- und Binary-Plist-Import",
+        Panel(title: tr("Merge in OpenCore config.plist"),
+              subtitle: tr("Bestehende DeviceProperties bleiben erhalten · XML- und Binary-Plist-Import"),
               icon: "square.on.square") {
             HStack(spacing: 12) {
-                IconAction(title:"config.plist auswählen",icon:"folder.badge.plus",prominent:true) { vm.openPlist() }
+                IconAction(title:tr("config.plist auswählen"),icon:"folder.badge.plus",prominent:true) { vm.openPlist() }
                 if let url = vm.plistURL {
                     Image(systemName:"checkmark.circle.fill").foregroundStyle(ThemeColor.green)
                     Text(url.lastPathComponent).font(.system(size: 12, design: .monospaced))
-                    Text("\(vm.plistSource.count) Bytes").font(.system(size: 11)).foregroundStyle(ThemeColor.muted)
+                    Text("\(vm.plistSource.count) " + tr("Bytes")).font(.system(size: 11)).foregroundStyle(ThemeColor.muted)
                 } else {
-                    Text("Noch keine config.plist ausgewählt").foregroundStyle(ThemeColor.muted)
+                    Text(tr("Noch keine config.plist ausgewählt")).foregroundStyle(ThemeColor.muted)
                         .font(.system(size: 12))
                 }
                 Spacer()
             }
             HStack(spacing: 10) {
-                IconAction(title: "Gepatchte Plist sichern", icon: "square.and.arrow.up",
+                IconAction(title: tr("Gepatchte Plist sichern"), icon: "square.and.arrow.up",
                            prominent: true) { vm.exportMergedPlist() }
-                IconAction(title: "Original mit Backup patchen", icon:"externaldrive.badge.checkmark",
+                IconAction(title: tr("Original mit Backup patchen"), icon:"externaldrive.badge.checkmark",
                            destructive:true) { vm.applyMergeInPlace() }
             }
             .disabled(vm.mergedPlistData == nil)
-            Label("Beim direkten Patch wird zuerst eine Zeitstempel-Backup-Datei neben der Originaldatei erzeugt. Änderungen an Boot-Konfigurationen unbedingt testen.",
+            Label(tr("Beim direkten Patch wird zuerst eine Zeitstempel-Backup-Datei neben der Originaldatei erzeugt. Änderungen an Boot-Konfigurationen unbedingt testen."),
                   systemImage: "exclamationmark.shield")
                 .font(.system(size: 11)).foregroundStyle(ThemeColor.amber)
             MonospaceBox(text: vm.mergedPlistText.isEmpty ?
-                         "config.plist laden, um den nativen Merge anzuzeigen." : vm.mergedPlistText,
+                         tr("config.plist laden, um den nativen Merge anzuzeigen.") : vm.mergedPlistText,
                          minHeight: 350)
         }
     }
 
     private var terminal: some View {
-        Panel(title: "ASCII Terminal Output",
-              subtitle: "Connector-Matrix, Status und Hardware-Header für Diagnose und Dokumentation",
+        Panel(title: tr("ASCII Terminal Output"),
+              subtitle: tr("Connector-Matrix, Status und Hardware-Header für Diagnose und Dokumentation"),
               icon: "terminal") {
             HStack {
                 StatusTag(text: "TEXT", color: ThemeColor.green)
                 Spacer()
-                IconAction(title:"Kopieren",icon:"doc.on.doc") { vm.copy(terminalText) }
-                IconAction(title:"TXT exportieren",icon:"square.and.arrow.up") {
+                IconAction(title:tr("Kopieren"),icon:"doc.on.doc") { vm.copy(terminalText) }
+                IconAction(title:tr("TXT exportieren"),icon:"square.and.arrow.up") {
                     vm.save(data: Data(terminalText.utf8), suggested: "vbt2fbpatch-report.txt")
                 }
             }
@@ -349,7 +349,7 @@ struct WorkspaceContent: View {
             "",
             vm.ascii,
             "",
-            "Warnings:",
+            tr("Warnings:"),
             (vm.analysis.warnings + (vm.currentPatch?.warnings ?? [])).joined(separator: "\n")
         ]
         return fields.joined(separator: "\n")
@@ -357,7 +357,7 @@ struct WorkspaceContent: View {
 
     private var hex: some View {
         VStack(spacing: 16) {
-            Panel(title: "BDB Block Inspector", subtitle: "VBT-Offset, BDB-Blöcke und Größen",
+            Panel(title: tr("BDB Block Inspector"), subtitle: tr("VBT-Offset, BDB-Blöcke und Größen"),
                   icon: "square.stack.3d.up") {
                 if let vbt = vm.parsed {
                     ForEach(vbt.blocks) { b in
@@ -368,7 +368,7 @@ struct WorkspaceContent: View {
                             Text(b.name).font(.system(size: 12))
                             Spacer()
                             Text(String(format:"offset 0x%04X",b.offset))
-                            Text("\(b.size) Bytes")
+                            Text("\(b.size) " + tr("Bytes"))
                         }
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(ThemeColor.muted)
@@ -376,13 +376,13 @@ struct WorkspaceContent: View {
                     }
                 }
             }
-            Panel(title: "Hex Viewer", subtitle: "Hex/ASCII Ansicht der ersten 16 KiB des VBT-Images",
+            Panel(title: tr("Hex Viewer"), subtitle: tr("Hex/ASCII Ansicht der ersten 16 KiB des VBT-Images"),
                   icon: "number") {
                 HStack {
-                    Text("\(vm.sourceData.count) Bytes total")
+                    Text("\(vm.sourceData.count) " + tr("Bytes total"))
                         .font(.system(size: 11, design: .monospaced)).foregroundStyle(ThemeColor.muted)
                     Spacer()
-                    IconAction(title:"Hex kopieren",icon:"doc.on.doc") {
+                    IconAction(title:tr("Hex kopieren"),icon:"doc.on.doc") {
                         vm.copy(PatchGenerator.hexDump(vm.sourceData))
                     }
                 }
@@ -393,31 +393,31 @@ struct WorkspaceContent: View {
 
     private var cli: some View {
         VStack(spacing: 16) {
-            Panel(title: "Original Python CLI Runner",
-                  subtitle: "Das unveränderte vbt2fbpatch.py v3.4.0 wird separat mit Python 3 ausgeführt, falls lokal verfügbar.",
+            Panel(title: tr("Original Python CLI Runner"),
+                  subtitle: tr("Das unveränderte vbt2fbpatch.py v3.4.0 wird separat mit Python 3 ausgeführt, falls lokal verfügbar."),
                   icon: "apple.terminal") {
                 HStack(spacing: 10) {
-                    IconAction(title:"CLI ausführen",icon:"play.fill",prominent:true) { vm.runCLI() }
-                    IconAction(title:"JSON-Ausgabe",icon:"curlybraces") { vm.runCLI(json:true) }
-                    IconAction(title:"Python Script exportieren",icon:"square.and.arrow.up") { vm.exportCLI() }
+                    IconAction(title:tr("CLI ausführen"),icon:"play.fill",prominent:true) { vm.runCLI() }
+                    IconAction(title:tr("JSON-Ausgabe"),icon:"curlybraces") { vm.runCLI(json:true) }
+                    IconAction(title:tr("Python Script exportieren"),icon:"square.and.arrow.up") { vm.exportCLI() }
                     Spacer()
-                    if vm.cliRunning { ProgressView().controlSize(.small); Text("Läuft…").font(.system(size: 11)) }
+                    if vm.cliRunning { ProgressView().controlSize(.small); Text(tr("Läuft…")).font(.system(size: 11)) }
                 }
                 .disabled(vm.cliRunning)
-                Text("CLI-Command").font(.system(size: 11, weight: .semibold)).foregroundStyle(ThemeColor.muted)
+                Text(tr("CLI-Command")).font(.system(size: 11, weight: .semibold)).foregroundStyle(ThemeColor.muted)
                 MonospaceBox(text: vm.cliCommand(), minHeight: 90)
-                MonospaceBox(text: vm.cliOutput.isEmpty ? "CLI noch nicht ausgeführt. Die native SwiftUI-Patch-Engine benötigt kein Python.": vm.cliOutput,
+                MonospaceBox(text: vm.cliOutput.isEmpty ? tr("CLI noch nicht ausgeführt. Die native SwiftUI-Patch-Engine benötigt kein Python."): vm.cliOutput,
                              minHeight: 290)
             }
-            Panel(title: "VBT extrahieren", subtitle: "Kurzanleitung: Intel BIOS Dump unter Linux / UEFI",
+            Panel(title: tr("VBT extrahieren"), subtitle: tr("Kurzanleitung: Intel BIOS Dump unter Linux / UEFI"),
                   icon: "book.closed") {
                 VStack(alignment: .leading, spacing: 9) {
-                    Text("Linux i915 DRM debugfs").font(.system(size: 12, weight: .semibold))
+                    Text(tr("Linux i915 DRM debugfs")).font(.system(size: 12, weight: .semibold))
                     MonospaceBox(text: "sudo mount -t debugfs none /sys/kernel/debug\nsudo cat /sys/kernel/debug/dri/0/i915_vbt > vbt.bin",
                                  minHeight: 75)
-                    Text("Falls die iGPU unter dri/1 liegt, /dri/0/ entsprechend ersetzen. Alternativ über UEFITool die Intel Video BIOS Table aus der Firmware extrahieren.")
+                    Text(tr("Falls die iGPU unter dri/1 liegt, /dri/0/ entsprechend ersetzen. Alternativ über UEFITool die Intel Video BIOS Table aus der Firmware extrahieren."))
                         .font(.system(size: 11)).foregroundStyle(ThemeColor.muted)
-                    Text("Hinweis: Intel Xe-Grafik (11. Generation+) besitzt keinen nativen macOS-Treiber. Ein Device-ID-Spoof kann fehlende Hardware-Beschleunigung nicht ersetzen.")
+                    Text(tr("Hinweis: Intel Xe-Grafik (11. Generation+) besitzt keinen nativen macOS-Treiber. Ein Device-ID-Spoof kann fehlende Hardware-Beschleunigung nicht ersetzen."))
                         .font(.system(size: 11)).foregroundStyle(ThemeColor.amber)
                 }
             }

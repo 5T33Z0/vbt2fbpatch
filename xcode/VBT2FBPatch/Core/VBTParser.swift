@@ -51,10 +51,10 @@ enum VBTError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .missingVBT: return "Keine $VBT-Signatur gefunden. Bitte eine Intel VBT .bin/.rom auswählen."
-        case .missingBDB: return "Kein gültiger BIOS Data Block ($BDB / BIOS_DATA_BLOCK) gefunden."
-        case .missingConnectors: return "Weder BDB-Block 0x02 noch Block 0x28 mit Child Devices gefunden."
-        case .invalidData(let detail): return "Ungültige VBT: \(detail)"
+        case .missingVBT: return tr("Keine $VBT-Signatur gefunden. Bitte eine Intel VBT .bin/.rom auswählen.")
+        case .missingBDB: return tr("Kein gültiger BIOS Data Block ($BDB / BIOS_DATA_BLOCK) gefunden.")
+        case .missingConnectors: return tr("Weder BDB-Block 0x02 noch Block 0x28 mit Child Devices gefunden.")
+        case .invalidData(let detail): return AppLocalization.format("Ungültige VBT: %@", detail)
         }
     }
 }
@@ -158,7 +158,7 @@ enum VBTParser {
         } else {
             stride = detectStride(selected)
         }
-        guard stride > 0 else { throw VBTError.invalidData("Ungültige Child-Device-Größe") }
+        guard stride > 0 else { throw VBTError.invalidData(tr("Ungültige Child-Device-Größe")) }
 
         var all: [VBTConnector] = []
         var active: [VBTConnector] = []
