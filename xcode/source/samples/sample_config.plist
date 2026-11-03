@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>ACPI</key>
+	<dict>
+		<key>Add</key>
+		<array/>
+	</dict>
+	<key>Booter</key>
+	<dict>
+		<key>Quirks</key>
+		<dict/>
+	</dict>
+	<key>DeviceProperties</key>
+	<dict>
+		<key>Add</key>
+		<dict>
+			<key>PciRoot(0x0)/Pci(0x1b,0x0)</key>
+			<dict>
+				<key>layout-id</key>
+				<data>
+				AQAAAA==
+				</data>
+			</dict>
+		</dict>
+	</dict>
+	<key>Kernel</key>
+	<dict>
+		<key>Add</key>
+		<array/>
+	</dict>
+	<key>Misc</key>
+	<dict/>
+	<key>NVRAM</key>
+	<dict>
+		<key>Add</key>
+		<dict/>
+	</dict>
+	<key>PlatformInfo</key>
+	<dict/>
+	<key>UEFI</key>
+	<dict/>
+</dict>
+</plist>

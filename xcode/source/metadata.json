@@ -1,0 +1,6 @@
+{
+  "name": "vbt2fbpatch",
+  "description": "Intel Video BIOS Table (VBT) parser, iGPU Device-ID compatibility detector, WhateverGreen spoofer, and OpenCore framebuffer patch generator for macOS.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

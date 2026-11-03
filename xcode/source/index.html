@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>vbt2fbpatch - Intel VBT Parser & iGPU WhateverGreen Framebuffer Patcher</title>
+    <meta name="description" content="Intel Video BIOS Table (VBT) parser, automatic iGPU device-ID compatibility detector, WhateverGreen spoofer, and OpenCore framebuffer patch generator for macOS." />
+    <meta property="og:title" content="vbt2fbpatch - Intel VBT Parser & iGPU WhateverGreen Framebuffer Patcher" />
+    <meta property="og:description" content="Intel Video BIOS Table (VBT) parser, automatic iGPU device-ID compatibility detector, WhateverGreen spoofer, and OpenCore framebuffer patch generator for macOS." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script>
+      // AI Studio Environment: HMR is disabled, ignore WebSocket errors
+      window.addEventListener('error', function(event) {
+        if (
+          event.message &&
+          (event.message.includes('WebSocket') ||
+           event.message.includes('createWebSocketModuleRunnerTransport') ||
+           event.filename?.includes('@vite/client'))
+        ) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+        }
+      }, true);
+      window.addEventListener('unhandledrejection', function(event) {
+        var str = String(event.reason || '');
+        if (str.includes('WebSocket') || str.includes('createWebSocketModuleRunnerTransport')) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+        }
+      }, true);
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
