@@ -1,4 +1,4 @@
-# vbt2fbpatch
+# VBT2FBPatch
 
 Generate OpenCore framebuffer patches for Intel iGPUs from your machine's own firmware data.
 
