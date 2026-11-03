@@ -2,7 +2,7 @@
 
 Generate OpenCore framebuffer patches for Intel iGPUs from your machine's own firmware data.
 
-<img width="1217" height="976" alt="vbt2fbpatch_main" src="https://github.com/user-attachments/assets/0029eef9-765a-4129-b016-32c1db1f8890" />
+<img width="1217" height="976" alt="VBT2FBPatch_GUI" src="https://github.com/user-attachments/assets/692cdf04-4bfc-4058-881d-8b7f3e7eb4af" />
 
 ---
 
