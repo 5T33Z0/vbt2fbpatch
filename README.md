@@ -246,6 +246,10 @@ This project was written entirely with AI. The first version came from Google AI
 - The Linux i915 driver and igt-gpu-tools' `intel_vbt_decode.c` (Intel Corporation, MIT) for the public VBT format definitions, used to cross-check this tool's decoder
 - [**About Video BIOS Table (VBT)**](https://github.com/ZoranStojsavljevic/Video-BIOS-Table-parser-assembler/wiki/Video-BIOS-Table-(VBT))
 
+## Special Thanks
+
+Special thanks to [MacThings](https://github.com/MacThings) for helping me port the application to a native macOS app using SwiftUI and Xcode.
+
 ## License
 
 MIT. The VBT format definitions follow the Linux i915 driver (Intel Corporation, MIT). See `LICENSE`.
