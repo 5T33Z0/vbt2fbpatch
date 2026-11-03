@@ -2,6 +2,8 @@
 
 Generate OpenCore framebuffer patches for Intel iGPUs from your machine's own firmware data.
 
+<img width="1217" height="976" alt="vbt2fbpatch_main" src="https://github.com/user-attachments/assets/3488ce80-1a6e-4329-9201-7f9775f53c3d" />
+
 `vbt2fbpatch` reads the display connector table from a dumped Intel Video BIOS Table (VBT), checks your iGPU against the [WhateverGreen Intel HD manual](https://github.com/acidanthera/WhateverGreen/blob/master/Manual/FAQ.IntelHD.en.md), and prints a ready-to-use `DeviceProperties` snippet for your `config.plist`.
 
 > [!NOTE]
