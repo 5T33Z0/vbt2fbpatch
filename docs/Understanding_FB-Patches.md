@@ -7,6 +7,7 @@
 - [Working Principle](#working-principle)
 - [AAPL,ig-platform-id Specifics](#aaplig-platform-id-specifics)
 - [Device-ID Specifics](#device-id-specifics)
+- [When Are Connector Patches Required?](#when-are-connector-patches-required)
 - [Relevant DeviceProperties in OpenCore's `config.plist`](#relevant-deviceproperties-in-opencores-configplist)
   - [GPU Identification and Framebuffer Selection](#gpu-identification-and-framebuffer-selection)
   - [Connector Properties](#connector-properties)
@@ -118,6 +119,10 @@ The same principle applies when running an older macOS version that does not off
 > 
 > A device-ID spoof alone does not add missing hardware capabilities or guarantee graphics acceleration. The selected framebuffer personality and any required patches must also be compatible with the actual GPU hardware.
 
+## When Are Connector Patches Required?
+
+Connector patches are only required when the actual display connectivity of the hardware differs from the default connector configuration defined by the selected `AAPL,ig-platform-id` and this causes display functionality issues. In practical terms, if the internal display works after macOS boots and all required external display outputs function correctly, connector patches are generally unnecessary. Only introduce patches when the default configuration causes problems such as missing displays, incorrect port mapping, or non-functional hot-plug detection.
+
 ## Relevant DeviceProperties in OpenCore's `config.plist`
 
 ### GPU Identification and Framebuffer Selection
@@ -205,41 +210,41 @@ Avoid copying flag values from unrelated framebuffer configurations without unde
 
 ### What is VBT.bin?
 
-VBT stands for **Video BIOS Table**. It is a firmware-provided data structure containing platform- and board-specific configuration information for Intel graphics. Much of this information concerns the display hardware and its connections.
+VBT stands for **Video BIOS Table**. It is a firmware-provided data structure containing platform- and board-specific configuration information for Intel graphics. A significant portion of this information describes the system's display hardware and how its outputs are configured.
 
-The VBT can contain information about the system's display topology, including port configuration and the interfaces used for display communication. It is therefore a valuable reference when investigating how a laptop's internal panel and external video outputs are wired.
+The VBT can contain details about the display topology, including physical port assignments, connection types, and the interfaces used for display communication. It is therefore a valuable reference when investigating how a laptop's internal display and external video outputs are wired.
 
 ### Why Use the VBT?
 
-A framebuffer dump shows the **connector configuration** provided by a macOS framebuffer personality. It does not necessarily tell you how the laptop's physical display outputs are wired.
+A macOS framebuffer dump shows the **connector configuration defined by a particular framebuffer personality**. However, it does not necessarily reveal how the system's physical display outputs are wired or which hardware interfaces they use.
 
-The VBT provides a second, firmware-level source of information that can help bridge that gap.
+The VBT provides a second, firmware-level source of information that helps bridge this gap.
 
-For example, it can provide information about:
+Depending on the platform and VBT version, it can contain information about:
 
 - Display port assignments and connection types.
-- DDC configuration used for display detection.
+- DDC configuration used for display detection and EDID communication.
 - AUX channel assignments for DisplayPort connections.
 - Display routing and other platform-specific configuration parameters.
 
-The VBT is not an OpenCore configuration file, nor does it directly provide a ready-to-use macOS framebuffer patch. Its data must be interpreted in the context of the selected framebuffer personality and verified against the actual hardware.
+The VBT is neither an OpenCore configuration file nor a ready-to-use macOS framebuffer patch. Its contents must be interpreted in the context of the selected framebuffer personality and verified against the actual hardware.
 
 ### How vbt2fbpatch Uses the VBT
 
-`vbt2fbpatch` uses the extracted `VBT.bin` as an input to identify hardware-specific display connection information.
+`vbt2fbpatch` uses an extracted `VBT.bin` as an input to identify hardware-specific display connection information.
 
-It analyzes relevant VBT structures and evaluates the extracted information alongside the selected macOS framebuffer personality to help determine suitable connector properties, including:
+It analyzes relevant VBT structures and evaluates the extracted data alongside the selected macOS framebuffer personality to help determine suitable connector properties, including:
 
-- Connector assignments and mappings.
-- Bus ID.
-- Pipe data.
-- Connector type.
+- Physical port-to-framebuffer connector mappings.
+- Bus ID assignments.
+- Pipe assignments.
+- Connector types.
 
-Not every framebuffer property is directly represented in the VBT. Some values must be derived or interpreted using the framebuffer structure and additional technical references.
+Not every framebuffer property is directly represented in the VBT. Some values must be derived or interpreted using the framebuffer structure, platform-specific information, and additional technical references.
 
-The resulting information helps identify the appropriate connector modifications for an OpenCore framebuffer patch.
+The resulting analysis helps identify the appropriate connector modifications for an OpenCore framebuffer patch. It is intended as a reference and starting point for configuration, not a substitute for hardware validation.
 
-**In short:** The VBT helps identify the hardware's display connections; the framebuffer personality defines the available connector entries; and WhateverGreen connector properties modify how macOS handles those connections.
+**In short:** The VBT describes platform-specific display connectivity; the macOS framebuffer personality defines the connector entries available to macOS; and WhateverGreen connector properties modify how macOS interprets and handles those connections.
 
 ## OpenCore Configuration Example
 
