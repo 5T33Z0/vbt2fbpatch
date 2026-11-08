@@ -1,6 +1,26 @@
 # Understanding Intel Framebuffer Configuration
 
-:construction: WORK IN PROGRESS
+**TABLE of CONTENTS**
+
+- [Introduction](#introduction)
+- [Intel Framebuffer DeviceProperty Hierarchy](#intel-framebuffer-deviceproperty-hierarchy)
+- [Working Principle](#working-principle)
+- [AAPL,ig-platform-id Specifics](#aaplig-platform-id-specifics)
+- [Device-ID Specifics](#device-id-specifics)
+- [Relevant DeviceProperties in OpenCore's `config.plist`](#relevant-deviceproperties-in-opencores-configplist)
+  - [GPU Identification and Framebuffer Selection](#gpu-identification-and-framebuffer-selection)
+  - [Connector Properties](#connector-properties)
+  - [Connector Type](#connector-type)
+  - [Bus ID](#bus-id)
+  - [Pipe](#pipe)
+  - [Flags](#flags)
+- [Utilizing VBT.bin for Framebuffer Patching](#utilizing-vbtbin-for-framebuffer-patching)
+  - [What is VBT.bin?](#what-is-vbtbin)
+  - [Why Use the VBT?](#why-use-the-vbt)
+  - [How vbt2fbpatch Uses the VBT](#how-vbt2fbpatch-uses-the-vbt)
+- [OpenCore Configuration Example](#opencore-configuration-example)
+
+---
 
 ## Introduction
 
@@ -98,14 +118,14 @@ The same principle applies when running an older macOS version that does not off
 > 
 > A device-ID spoof alone does not add missing hardware capabilities or guarantee graphics acceleration. The selected framebuffer personality and any required patches must also be compatible with the actual GPU hardware.
 
-## Relevant DeviceProperties
+## Relevant DeviceProperties in OpenCore's `config.plist`
 
 ### GPU Identification and Framebuffer Selection
 
 | Property | Level | Function |
 |---|---|---|
-| `device-id` | GPU | Spoofs the PCI device ID presented to macOS. |
 | `AAPL,ig-platform-id` | Framebuffer | Selects the Intel framebuffer personality. |
+| `device-id` | GPU | Injects the PCI device ID presented to macOS. Only required for spoofing a different device-id.|
 
 > [!NOTE]
 > 
@@ -156,6 +176,19 @@ The Bus ID identifies the GMBUS/DDC interface associated with a connector. It is
 
 Common Bus ID values include `0x04`, `0x05` and `0x06`. They are not universal identifiers for physical HDMI or DisplayPort sockets: the correct assignment depends on the platform's display wiring and firmware configuration.
 
+**Physical Port to Bus ID Matrix**
+
+| Physical output | Bus ID (DP) | Bus ID (HDMI) | Bus ID (DVI) |
+| --------------- | ----------- | ------------- | ------------ |
+| Port 1          | `02000000`  | `00000000`    | `01000000`   |
+| Port 2          | `04000000`  | `02000000`    | `02000000`   |
+| Port 3          | `05000000`  | `04000000`    | `04000000`   |
+| Port 4          | `06000000`  | `06000000`    | `06000000`   |
+
+> [!NOTE]
+> 
+> These values describe Bus ID assignments, not framebuffer connector > indices (`con0` - `con3`). The actual mapping depends on the platform and framebuffer configuration. Treat this table as a reference, not a universal mapping.
+
 ### Pipe
 
 The pipe value is another field in the connector entry. It specifies the display pipe associated with the connector.
@@ -168,7 +201,9 @@ Connector flags are a bit field containing additional connector-specific setting
 
 Avoid copying flag values from unrelated framebuffer configurations without understanding the hardware and the intended patch.
 
-## What is VBT.bin?
+## Utilizing VBT.bin for Framebuffer Patching
+
+### What is VBT.bin?
 
 VBT stands for **Video BIOS Table**. It is a firmware-provided data structure containing platform- and board-specific configuration information for Intel graphics. Much of this information concerns the display hardware and its connections.
 
@@ -176,7 +211,7 @@ The VBT can contain information about the system's display topology, including p
 
 ### Why Use the VBT?
 
-A framebuffer dump shows the connector configuration provided by a macOS framebuffer personality. It does not necessarily tell you how the laptop's physical display outputs are wired.
+A framebuffer dump shows the **connector configuration** provided by a macOS framebuffer personality. It does not necessarily tell you how the laptop's physical display outputs are wired.
 
 The VBT provides a second, firmware-level source of information that can help bridge that gap.
 
@@ -189,7 +224,7 @@ For example, it can provide information about:
 
 The VBT is not an OpenCore configuration file, nor does it directly provide a ready-to-use macOS framebuffer patch. Its data must be interpreted in the context of the selected framebuffer personality and verified against the actual hardware.
 
-## How vbt2fbpatch Uses the VBT
+### How vbt2fbpatch Uses the VBT
 
 `vbt2fbpatch` uses the extracted `VBT.bin` as an input to identify hardware-specific display connection information.
 
@@ -225,6 +260,6 @@ DeviceProperties
         └── framebuffer-con0-flags
 ```
 
-The example shows one connector patch. Additional connector patches can be configured for slots `1`, `2` and `3` as required.
-
-The `device-id` property is optional, and the connector properties should only be injected when the corresponding modifications are necessary.
+> [!NOTE]
+>
+> The example shows one connector patch. Additional connector patches can be configured for slots `1`, `2` and `3` as required. The `device-id` property is optional, and the connector properties should only be injected when the corresponding modifications are necessary.
