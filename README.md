@@ -183,31 +183,51 @@ The device-id is the second half of the `[8086:xxxx]` pair, for example `3E9B`.
 
 The output contains a summary (status, spoof, platform-id), a table of the display devices in the VBT, a connector table and the XML snippet. Copy the snippet into `DeviceProperties > Add` of your `config.plist`, or use `-m` as in the examples above. `--merge` keeps your existing keys and writes a `config.plist.bak` backup first. Plist comments are not preserved.
 
+## 5. CLI Flags & Options Reference
+
+Listed below 
+
+### Usage
+
+| Command                                                         | Description                                                                               |
+| --------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `vbt2fbpatch [-h] -i INPUT [-d DEVICE_ID] [--detect-device-id]` | Basic invocation with required input and optional device ID detection.                    |
+| `[-p PLATFORM_ID] [-t TARGET_MACOS]`                            | Override platform ID and specify target macOS version.                                    |
+| `[-f {desktop,mobile,headless}] [--spoof-id SPOOF_ID]`          | Select framebuffer type and optionally spoof the device ID.                               |
+| `[--unifiedmem] [--rps-control] [--backlight-fix] [--mobile]`   | Enable additional framebuffer fixes and laptop mode.                                      |
+| `[--first-con N] [--bus-id-source {ddi,ddc}] [--pipe N]`        | Configure connector indexing, bus-ID source, and pipe assignment.                         |
+| `[--con-flags HEX] [--fb-flags HEX] [--lspcon-mode {pcon,ls}]`  | Override connector flags, framebuffer flags, and LSPCON mode.                             |
+| `[--verbose] [-m MERGE] [-o OUTPUT] [--json] [-v]`              | Enable verbose output, merge into a config, save output, print JSON, or show the version. |
+
+Parse an Intel VBT dump and generate a WhateverGreen/OpenCore framebuffer patch.
+
 ### Options
 
-| Option | Description |
-|---|---|
-| `-i`, `--input` | VBT dump or option ROM (required) |
-| `-d`, `--device-id` | iGPU device-id in hex, e.g. `3E9B` (read from the file if it contains a PCIR header) |
-| `--detect-device-id` | Read the iGPU device-id from this machine (Linux, Windows) when `-d` is not given. Only correct if the VBT comes from this same machine. Refused on macOS |
-| `-t`, `--target-macos` | Target macOS version, default `14.0` |
-| `-f`, `--form-factor` | `desktop`, `mobile` or `headless`. Default: mobile if the VBT has an internal panel, otherwise desktop |
-| `-p`, `--platform-id` | Override the platform-id, written as in the manual's framebuffer lists, e.g. `3E9B0007` |
-| `--spoof-id` | Use your own device-id spoof, e.g. `3EA5` |
-| `--unifiedmem` | Add `framebuffer-unifiedmem` (DVMT workaround) |
-| `--rps-control` | Add `rps-control` |
-| `--mobile` | Laptop mode: mobile framebuffer, at most 3 connectors (`con0` to `con2`) and `framebuffer-portcount` = 3 |
-| `--first-con N` | Index of the first `framebuffer-conN` patch. Default: 0 with an internal panel, otherwise 1, like the FAQ framebuffers |
-| `--bus-id-source ddi\|ddc` | Bus-ID of HDMI/DVI ports: from the DDI (default) or from the VBT's `ddc_pin` (experimental, only valid for legacy GMBUS pins 4, 5 and 6) |
-| `--pipe N` | Override the pipe of every connector patch, for example `18` (some community laptop patches use it) |
-| `--con-flags HEX` | Set `framebuffer-conN-flags` on the external connectors, for example `0x3C7`. Without it the framebuffer keeps its own flags |
-| `--fb-flags HEX` | Set `framebuffer-flags`, for example `0xE30B0A` |
-| `--lspcon-mode pcon\|ls` | Also set `framebuffer-conN-preferred-lspcon-mode` on ports the VBT marks as LSPCON |
-| `--verbose` | Show parser notes |
-| `--backlight-fix` | Add the backlight register fix for Kaby Lake, Coffee Lake and Ice Lake laptops. Uses `enable-backlight-registers-alternative-fix` on macOS 13.4 and newer, otherwise `enable-backlight-registers-fix` |
-| `-m`, `--merge` | Merge the patch into this `config.plist` |
-| `-o`, `--output` | Save the XML snippet to a file |
-| `--json` | Machine-readable output |
+| Option                                                                    | Description                                                                                                               |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `-h`, `--help`                                                            | Show this help message and exit.                                                                                          |
+| `-i INPUT`, `--input INPUT`                                               | VBT dump or option ROM containing a VBT (required).                                                                       |
+| `-d DEVICE_ID`, `--device-id DEVICE_ID`                                   | iGPU PCI device ID in hex (e.g. `3E9B`, `9BC8`, `0412`). Read from PCIR header if present.                                |
+| `--detect-device-id`                                                      | Read iGPU device ID from the current machine (Linux, Windows). Not available on macOS to prevent reading existing spoofs. |
+| `-p PLATFORM_ID`, `--platform-id PLATFORM_ID`                             | `AAPL,ig-platform-id` in FAQ notation (e.g. `3E9B0007`). Overrides automatic choice.                                      |
+| `-t TARGET_MACOS`, `--target-macos TARGET_MACOS`                          | Target macOS version for compatibility check (default: `14.0`).                                                           |
+| `-f {desktop,mobile,headless}`, `--form-factor {desktop,mobile,headless}` | Framebuffer type. Default: mobile if VBT has an internal panel, otherwise desktop.                                        |
+| `--spoof-id SPOOF_ID`                                                     | Inject this device ID instead of the FAQ value (hex, e.g. `3E9B`).                                                        |
+| `--unifiedmem`                                                            | Add `framebuffer-unifiedmem` (2048 MB DVMT workaround).                                                                   |
+| `--rps-control`                                                           | Add `rps-control` (RPS power control fix).                                                                                |
+| `--backlight-fix`                                                         | Add backlight register fix for KBL/CFL/ICL laptops (automatically uses alternative fix on macOS 13.4+).                   |
+| `--mobile`                                                                | Laptop mode: enforces mobile framebuffer, max. 3 connectors (`con0`–`con2`) and `framebuffer-portcount = 3`.              |
+| `--first-con N`                                                           | Index of first `framebuffer-conN` patch (default: `0` with internal panel, otherwise `1`).                                |
+| `--bus-id-source {ddi,ddc}`                                               | Bus-ID source for HDMI/DVI ports: from DDI (default) or from VBT `ddc_pin` (experimental legacy GMBUS pins 4, 5, 6).      |
+| `--pipe N`                                                                | Override pipe for every connector patch (e.g. `18`).                                                                      |
+| `--con-flags HEX`                                                         | Set `framebuffer-conN-flags` on external connectors (e.g. `0x3C7`).                                                       |
+| `--fb-flags HEX`                                                          | Set `framebuffer-flags` (e.g. `0xE30B0A`).                                                                                |
+| `--lspcon-mode {pcon,ls}`                                                 | Set `framebuffer-conN-preferred-lspcon-mode` on ports marked as LSPCON (`pcon` = DP to HDMI 2.0, `ls` = HDMI 1.4).        |
+| `--verbose`                                                               | Display detailed parser notes.                                                                                            |
+| `-m MERGE`, `--merge MERGE`                                               | Path to `config.plist` to merge into (a `.bak` copy is written first).                                                    |
+| `-o OUTPUT`, `--output OUTPUT`                                            | Write generated OpenCore XML snippet to file.                                                                             |
+| `--json`                                                                  | Print machine-readable JSON output for scripting/automation.                                                              |
+| `-v`, `--version`                                                         | Show this program's version number and exit.                                                                              
 
 ### Reading the status
 
