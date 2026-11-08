@@ -70,7 +70,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Tuple, Union
 
-__version__ = "3.4.0"
+__version__ = "3.5.0"
 PROG_NAME = "vbt2fbpatch"
 FAQ_URL = "https://github.com/acidanthera/WhateverGreen/blob/master/Manual/FAQ.IntelHD.en.md"
 IGPU_PCI_PATH = "PciRoot(0x0)/Pci(0x2,0x0)"
@@ -113,14 +113,20 @@ def _clean_hex(text: str) -> str:
 
 
 def parse_device_id(raw: Union[int, str]) -> int:
-    """Parse a PCI device-id such as 0x9BC8, '9bc8' or '9BC8' into an int (<= 0xFFFF)."""
+    """Parse a PCI device-id such as 0x9BC8, '9bc8', '3E9B', or 4-byte LE '9B3E0000' into an int (<= 0xFFFF)."""
     if isinstance(raw, int):
         value = raw
     else:
         clean = _clean_hex(raw)
-        if not clean or len(clean) > 4 or any(c not in "0123456789abcdefABCDEF" for c in clean):
+        if len(clean) == 8 and clean.endswith("0000"):
+            # e.g. "9B3E0000" passed from OpenCore LE representation -> 0x3E9B
+            clean = clean[:4]
+            swapped = ((int(clean, 16) >> 8) & 0xff) | ((int(clean, 16) & 0xff) << 8)
+            value = swapped
+        elif not clean or len(clean) > 4 or any(c not in "0123456789abcdefABCDEF" for c in clean):
             raise ValueError(f"invalid device-id {raw!r}: expected 1-4 hex digits, e.g. 3E9B")
-        value = int(clean, 16)
+        else:
+            value = int(clean, 16)
     if not 0 <= value <= 0xFFFF:
         raise ValueError(f"device-id out of range: {raw!r}")
     return value
@@ -130,6 +136,7 @@ def parse_platform_id(raw: Union[int, str]) -> int:
     """
     Parse an AAPL,ig-platform-id in the integer notation used by the FAQ's framebuffer
     lists and by the igfxframe boot-arg (e.g. 0x3E9B0007). Exactly 8 hex digits.
+    Also transparently normalizes little-endian OpenCore byte-order (e.g. 07009B3E).
     """
     if isinstance(raw, int):
         value = raw
@@ -143,6 +150,9 @@ def parse_platform_id(raw: Union[int, str]) -> int:
         value = int(clean, 16)
     if not 0 <= value <= 0xFFFFFFFF:
         raise ValueError(f"platform-id out of range: {raw!r}")
+    swapped = byteswap32(value)
+    if "KNOWN_PLATFORM_IDS" in globals() and value not in KNOWN_PLATFORM_IDS and swapped in KNOWN_PLATFORM_IDS:
+        return swapped
     return value
 
 
