@@ -4,7 +4,7 @@
        src="https://github.com/user-attachments/assets/086ffe8c-581b-4af8-aea8-4f2aca24d41b" />
 </p>
 
-<p align="center">
+<p align="left">
   Generate OpenCore framebuffer patches for Intel iGPUs
   from your machine's own firmware data.
 </p>
@@ -14,6 +14,8 @@
        alt="VBT2FBPatch GUI"
        src="https://github.com/user-attachments/assets/692cdf04-4bfc-4058-881d-8b7f3e7eb4af" />
 </p>
+
+**Now also available as WebAp**p: https://vbt2fbpatch.ai.studio/
 
 ---
 
