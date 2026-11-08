@@ -130,11 +130,12 @@ Connector patches are only required when the actual display connectivity of the 
 | Property | Level | Function |
 |---|---|---|
 | `AAPL,ig-platform-id` | Framebuffer | Selects the Intel framebuffer personality. |
-| `device-id` | GPU | Injects the PCI device ID presented to macOS. Only required for spoofing a different device-id.|
+| `device-id` | GPU | Injects the PCI device ID presented to macOS. |
 
 > [!NOTE]
-> 
-> Device-ID injection is optional and depends on the hardware configuration and macOS compatibility.
+> Device-ID injection is optional and only required when spoofing a different device ID to make macOS recognize the GPU as compatible.
+>
+> Injecting an older, unsupported `AAPL,ig-platform-id` on a newer macOS version without a compatible or newer device ID will most likely result in a boot crash. The same applies to injecting an incorrect or unsupported device ID.
 
 ### Connector Properties
 
