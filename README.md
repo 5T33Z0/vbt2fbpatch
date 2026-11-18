@@ -15,7 +15,11 @@
        src="https://github.com/user-attachments/assets/692cdf04-4bfc-4058-881d-8b7f3e7eb4af" />
 </p>
 
-**Now also available as WebAp**p: https://vbt2fbpatch.ai.studio/
+> [!TIP]
+>
+> For the latest features and improvements, please use the web app or Python script instead of the macOS app.
+>
+> **https://vbt2fbpatch.ai.studio/**
 
 ---
 
