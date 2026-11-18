@@ -295,7 +295,6 @@ chmod +x /path/to/vbt2fbpatch
 
 The author gratefully acknowledges the following authors and open-source resources that made this project possible:
 
-- **5T33Z0**: Author and creator of `vbt2fbpatch`.
 - **Acidanthera / WhateverGreen Team**:
   - The [WhateverGreen Intel HD FAQ (`FAQ.IntelHD.en.md`)](https://github.com/acidanthera/WhateverGreen/blob/master/Manual/FAQ.IntelHD.en.md), which serves as the primary hardware compatibility database, connector dump reference, bus ID translation matrix, and documentation for LSPCON and backlight register fixes.
 - **Intel Corporation & Linux Kernel Developers**:
@@ -304,15 +303,11 @@ The author gratefully acknowledges the following authors and open-source resourc
   - `tools/intel_vbt_decode.c` (Copyright &copy; 2006 Intel Corporation, MIT license) for BDB version gates (AUX 155, LSPCON 192, Type-C 195, HPD invert 196, Thunderbolt 209) and connector decoding routines.
 - **OC-Little-Translated**:
   - `IntelFramebuffer.bt` 010 Editor binary template for macOS framebuffer and connector flag bitmask definitions.
+- Special thanks to [**MacThings**](https://github.com/MacThings) for helping me port the application to a native macOS app using SwiftUI and Xcode. 
 
 ---
 
 ## 8. License
 
-Copyright &copy; 2026 5T33Z0.
+MIT. The VBT format definitions follow the Linux i915 driver (Intel Corporation, MIT). See `LICENSE`.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
