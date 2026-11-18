@@ -1,9 +1,29 @@
 # vbt2fbpatch
 
-> **Intel Video BIOS Table (VBT) Parser, iGPU Compatibility Engine & WhateverGreen Framebuffer Patcher for macOS**  
-> *Author: 5T33Z0 · Version: 3.6.0 · License: MIT*
+<p align="center">
+  <img width="256" height="256"
+       alt="VBT2FBPatch"
+       src="https://github.com/user-attachments/assets/086ffe8c-581b-4af8-aea8-4f2aca24d41b" />
+</p>
 
-`vbt2fbpatch` is a zero-dependency, cross-platform Python 3 command-line utility and web application designed for Intel-based Hackintosh configurations. It parses dumped Intel Video BIOS Tables (`vbt.bin`), checks Intel integrated graphics (iGPU) Device-ID compatibility against the official WhateverGreen documentation, and automatically generates matching OpenCore `DeviceProperties` patches (`PciRoot(0x0)/Pci(0x2,0x0)`) for macOS.
+<p align="left">
+  Generate OpenCore framebuffer patches for Intel iGPUs
+  from your machine's own firmware data.
+</p>
+
+<p align="center">
+  <img width="1217"
+       alt="VBT2FBPatch GUI"
+       src="https://github.com/user-attachments/assets/692cdf04-4bfc-4058-881d-8b7f3e7eb4af" />
+</p>
+
+> **Intel Video BIOS Table (VBT) Parser, iGPU Compatibility Engine & WhateverGreen Framebuffer Patcher for macOS**  
+
+> [!TIP]
+>
+> For the latest features and improvements, please use the web app or Python script instead of the macOS app.
+>
+> **https://vbt2fbpatch.ai.studio/**
 
 ---
 
@@ -25,7 +45,10 @@
 
 ## 1. Introduction: Why This Tool Exists
 
+`vbt2fbpatch` is a zero-dependency, cross-platform Python 3 command-line utility and web application designed for Intel-based Hackintosh configurations. It parses dumped Intel Video BIOS Tables (`vbt.bin`), checks Intel integrated graphics (iGPU) Device-ID compatibility against the official WhateverGreen documentation, and automatically generates matching OpenCore `DeviceProperties` patches (`PciRoot(0x0)/Pci(0x2,0x0)`) for macOS.
+
 When running macOS on non-Apple PC hardware (Hackintosh), display outputs frequently fail with:
+
 - **Black screens** on boot or after waking from sleep.
 - Displays only functioning on one port (e.g. DisplayPort works, but HDMI is black).
 - Inverted backlight controls or broken brightness sliders on laptops.
@@ -38,6 +61,7 @@ Furthermore, many popular Intel CPUs (such as 10th Gen Comet Lake Desktop `0x9BC
 
 ### The Solution: `vbt2fbpatch`
 Your computer's motherboard UEFI firmware contains a standardized data structure created by the Intel GOP (Graphics Output Protocol) driver called the **Video BIOS Table (VBT)**. The VBT defines the exact physical wiring of every display port on your motherboard or laptop:
+
 - Which physical DDI lane is connected (DDI A, B, C, D, E, F).
 - The connector type (eDP, DisplayPort, HDMI, DVI-D).
 - DDC / AUX communication channels and Hot-Plug Detect (HPD) pins.
