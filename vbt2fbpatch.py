@@ -70,7 +70,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Tuple, Union
 
-__version__ = "3.5.0"
+__version__ = "3.6.0"
 PROG_NAME = "vbt2fbpatch"
 FAQ_URL = "https://github.com/acidanthera/WhateverGreen/blob/master/Manual/FAQ.IntelHD.en.md"
 IGPU_PCI_PATH = "PciRoot(0x0)/Pci(0x2,0x0)"
@@ -203,6 +203,7 @@ def parse_macos_version(text: str) -> Tuple[int, int, int]:
 # status UNKNOWN instead of a guessed spoof.
 # ==============================================================================
 
+SEC_IVB = "Intel HD Graphics 2500/4000 (Ivy Bridge processors)"
 SEC_HSW = "Intel HD Graphics 4200-5200 (Haswell processors)"
 SEC_BDW = "Intel HD Graphics 5300-6300 (Broadwell processors)"
 SEC_SKL = "Intel HD Graphics 510-580 (Skylake processors)"
@@ -276,6 +277,11 @@ class IGPUDevice:
 
 # --- spoofs documented in the FAQ ---------------------------------------------
 
+SPOOF_IVY_BRIDGE_2500 = SpoofMapping(
+    0x0162, SEC_IVB,
+    "Desktop HD 2500 cannot drive displays in macOS; spoof 0x0162 with empty framebuffer "
+    "0x01620007 alongside a dGPU for Intel Quick Sync.")
+
 SPOOF_HASWELL = SpoofMapping(
     0x0412, SEC_HSW,
     "Desktop HD4400 and mobile HD4200/HD4400/HD4600 need device-id 12040000 (0x0412).")
@@ -321,6 +327,21 @@ INTEL_IGPU_DATABASE: Dict[int, IGPUDevice] = {}
 def _register(dev: IGPUDevice) -> None:
     INTEL_IGPU_DATABASE[dev.device_id] = dev
 
+
+# Ivy Bridge: OS X 10.8.x to macOS 11.x
+_IVB_PROFILES = [
+    _p("0166000A", DESKTOP, "FAQ default desktop framebuffer"),
+    _p("01660003", MOBILE, "FAQ default laptop framebuffer (1366x768)"),
+    _p("01620007", HEADLESS, "FAQ empty framebuffer"),
+]
+_register(IGPUDevice(0x0162, "Intel HD Graphics 4000 (Ivy Bridge desktop)", "Ivy Bridge", DESKTOP,
+                     macos_min="10.8", macos_max="11.99", profiles=_IVB_PROFILES, faq_section=SEC_IVB))
+_register(IGPUDevice(0x0166, "Intel HD Graphics 4000 (Ivy Bridge mobile)", "Ivy Bridge", MOBILE,
+                     macos_min="10.8", macos_max="11.99", profiles=_IVB_PROFILES, faq_section=SEC_IVB))
+_register(IGPUDevice(0x0152, "Intel HD Graphics 2500 (Ivy Bridge desktop GT1)", "Ivy Bridge", DESKTOP,
+                     macos_min="10.8", macos_max="11.99", spoof=SPOOF_IVY_BRIDGE_2500,
+                     profiles=[_p("01620007", HEADLESS, "FAQ empty framebuffer (IQSV only)")],
+                     faq_section=SEC_IVB))
 
 # Haswell: OS X 10.9.x to macOS 12.x
 _HSW_PROFILES = [
@@ -527,6 +548,7 @@ FRAMEBUFFER_FLAG_NAMES: Dict[int, str] = {
 # platform-id -> (framebuffer flags, ((index, bus-id, pipe, type, flags), ...)); index 255 = unused slot.
 # Generated from the framebuffer dumps in FAQ.IntelHD.en.md for the platform-ids this tool can select.
 FRAMEBUFFER_DUMPS: Dict[int, Tuple[int, Tuple[Tuple[int, int, int, int, int], ...]]] = {
+    0x01620007: (0x00000000, ()),
     0x04120004: (0x00000000, ()),
     0x0A260006: (0x0000000F, ((0, 0x00, 8, 0x2, 0x30), (1, 0x05, 9, 0x400, 0x87), (2, 0x04, 9, 0x400, 0x87),)),
     0x0D220003: (0x00000402, ((1, 0x05, 9, 0x400, 0x87), (2, 0x04, 10, 0x400, 0x87), (3, 0x06, 8, 0x400, 0x11),)),
@@ -555,6 +577,8 @@ FRAMEBUFFER_DUMPS: Dict[int, Tuple[int, Tuple[Tuple[int, int, int, int, int], ..
     0x9BC50003: (0x00001000, ()),
     0x9BC80003: (0x00001000, ()),
 }
+
+HEADLESS_PLATFORM_IDS = {pid for pid, (_, cons) in FRAMEBUFFER_DUMPS.items() if len(cons) == 0}
 
 
 def describe_flags(value: int, names: Dict[int, str]) -> str:
@@ -668,6 +692,7 @@ def resolve_igpu(
     form_factor: Optional[Union[str, FormFactor]] = None,
     platform_id_override: Optional[Union[int, str]] = None,
     spoof_id_override: Optional[Union[int, str]] = None,
+    no_spoof: bool = False,
 ) -> ResolutionResult:
     """Decide whether an iGPU works as-is, needs a device-id spoof, or is unusable."""
     dev_id = parse_device_id(device_id_raw)
@@ -708,7 +733,13 @@ def resolve_igpu(
             reason = f"Natively supported on macOS {target_macos}; no device-id spoof needed."
 
     # --- spoof ----------------------------------------------------------------
-    if spoof_id_override is not None:
+    if no_spoof:
+        db_spoof_active = False
+        spoof_target = None
+        if status == CompatibilityStatus.NEEDS_SPOOF:
+            status = CompatibilityStatus.NATIVE
+            reason = "Retaining native device-id (--no-spoof); OCLP root patches required if OS lacks native driver."
+    elif spoof_id_override is not None:
         if status == CompatibilityStatus.UNSUPPORTED:
             warnings.append("--spoof-id ignored: this iGPU generation has no macOS driver.")
         else:
@@ -721,7 +752,7 @@ def resolve_igpu(
     elif db_spoof_active:
         spoof_target = dev.spoof.target_id
 
-    if dev is not None and dev.spoof is not None and dev.spoof.active_on(target):
+    if not no_spoof and dev is not None and dev.spoof is not None and dev.spoof.active_on(target):
         for key, value in dev.spoof.extra_properties:
             extras[key] = pack_u32_le(value)
 
@@ -735,6 +766,8 @@ def resolve_igpu(
                 if p.platform_id == platform_id:
                     profile = p
                     break
+        if (profile is not None and profile.form_factor == FormFactor.HEADLESS) or (platform_id in HEADLESS_PLATFORM_IDS):
+            ff = FormFactor.HEADLESS
     elif dev is not None and dev.supported:
         use_spoofed = bool(dev.spoofed_profiles) and db_spoof_active and not spoof_is_manual
         pool = dev.spoofed_profiles if use_spoofed else dev.profiles
@@ -1510,6 +1543,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("-f", "--form-factor", choices=[f.value for f in FormFactor],
                    help="framebuffer type. Default: mobile if the VBT has an internal panel, else desktop.")
     p.add_argument("--spoof-id", help="inject this device-id instead of the FAQ value (hex, e.g. 3E9B)")
+    p.add_argument("--no-spoof", action="store_true", help="retain native device-id and framebuffer (e.g. for OCLP root patches)")
     p.add_argument("--unifiedmem", action="store_true", help="add framebuffer-unifiedmem (DVMT workaround)")
     p.add_argument("--rps-control", action="store_true", help="add rps-control")
     p.add_argument("--backlight-fix", action="store_true",
@@ -1601,7 +1635,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 return _fail(f"-p {args.platform_id} looks like raw bytes. Use the FAQ notation "
                              f"{byteswap32(pid):08X} instead.", 2)
 
-        res = resolve_igpu(device_id, args.target_macos, form_factor, args.platform_id, args.spoof_id)
+        res = resolve_igpu(device_id, args.target_macos, form_factor, args.platform_id, args.spoof_id, no_spoof=args.no_spoof)
     except ValueError as exc:
         return _fail(str(exc), 2)
 
@@ -1638,7 +1672,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     else:
         props = generate_opencore_patch(res.platform_id_bytes, res.spoof_bytes, extras,
                                         connectors, args.unifiedmem, args.rps_control,
-                                        portcount=MOBILE_MAX_CONNECTORS if args.mobile else None,
+                                        portcount=MOBILE_MAX_CONNECTORS if (args.mobile and res.form_factor != FormFactor.HEADLESS) else None,
                                         lspcon_mode={"pcon": 1, "ls": 0}.get(args.lspcon_mode),
                                         framebuffer_flags=args.fb_flags)
 
